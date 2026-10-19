@@ -44,6 +44,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.composed
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -126,15 +129,8 @@ fun WeatherScreen() {
                 )
             }
         } else {
-            // Hauptkarte: zart getönt
-            val hero = tone(Tone.TINT)
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(hero.bg)
-                    .padding(horizontal = 20.dp, vertical = 16.dp)
-            ) {
+            // Hauptkarte: weiß, Farbe nur über Symbol und Akzente
+            Card(padding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -142,21 +138,21 @@ fun WeatherScreen() {
                                 append("${w.temp.roundToInt()}")
                                 withStyle(SpanStyle(color = p.accent)) { append("°") }
                             },
-                            style = num(76.sp, FontWeight.SemiBold), color = hero.fg
+                            style = num(76.sp, FontWeight.SemiBold), color = p.ink
                         )
-                        Text("${weatherText(w.code)} · H ${deg(w.high)} · T ${deg(w.low)}", color = hero.sub, fontSize = 15.sp)
+                        Text("${weatherText(w.code)} · H ${deg(w.high)} · T ${deg(w.low)}", color = p.sub, fontSize = 15.sp)
                     }
-                    TwIcon(weatherIcon(w.code, w.day), size = 72.dp, tint = hero.fg)
+                    TwIcon(weatherIcon(w.code, w.day), size = 72.dp, tint = weatherTint(w.code, w.day))
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(
                     Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(p.card.copy(alpha = if (p.dark) 0.35f else 0.85f))
+                        .background(p.track)
                         .padding(horizontal = 12.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TwIcon(Ic.sun, size = 16.dp, tint = p.ink)
+                    TwIcon(Ic.sun, size = 16.dp, tint = p.accent)
                     Text(
                         "${fmt(w.sunH, 1)} Sonnenstunden heute", color = p.ink, fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 6.dp)
@@ -164,49 +160,52 @@ fun WeatherScreen() {
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatTile("Taupunkt", deg(w.dew), Ic.droplet, Tone.NONE, Modifier.weight(1f))
-                StatTile("Wind", if (w.wind.isNaN()) "–" else "${w.wind.roundToInt()} km/h", Ic.wind, Tone.TINT, Modifier.weight(1f))
-                StatTile("Gefühlt", deg(w.feels), Ic.thermo, Tone.NONE, Modifier.weight(1f))
+                StatTile("Taupunkt", deg(w.dew), Ic.droplet, Modifier.weight(1f))
+                StatTile("Wind", if (w.wind.isNaN()) "–" else "${w.wind.roundToInt()} km/h", Ic.wind, Modifier.weight(1f))
+                StatTile("Gefühlt", deg(w.feels), Ic.thermo, Modifier.weight(1f))
             }
-            Card(padding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Forecast("Jetzt", weatherIcon(w.code, w.day), deg(w.temp), null, Tone.STRONG, Modifier.weight(1f))
+            Card(padding = PaddingValues(horizontal = 6.dp, vertical = 12.dp)) {
+                Row(Modifier.fillMaxWidth()) {
+                    Forecast("Jetzt", weatherIcon(w.code, w.day), weatherTint(w.code, w.day), w.temp, null, Modifier.weight(1f), strongLabel = true)
                     w.hours.take(4).forEach { h ->
-                        Forecast(h.label, weatherIcon(h.code, h.day), deg(h.temp), null, Tone.NONE, Modifier.weight(1f))
+                        Forecast(h.label, weatherIcon(h.code, h.day), weatherTint(h.code, h.day), h.temp, null, Modifier.weight(1f))
                     }
                 }
             }
             Text("Nächste 5 Tage", color = p.sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
-            val dayTones = listOf(Tone.STRONG, Tone.NONE, Tone.TINT, Tone.DARK, Tone.NONE)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 w.days.take(5).forEachIndexed { i, d ->
-                    Forecast(d.label, weatherIcon(d.code), deg(d.max), deg(d.min), dayTones[i % dayTones.size], Modifier.weight(1f), pill = true)
+                    val tinted = i % 2 == 1
+                    Forecast(
+                        d.label, weatherIcon(d.code), weatherTint(d.code, true), d.max, d.min,
+                        Modifier
+                            .weight(1f)
+                            .tile(tinted, 22.dp),
+                        strongLabel = true, padV = 14.dp
+                    )
                 }
             }
         }
 
         SectionTitle("Weitere Orte", "Hinzufügen") { adding = true }
-        store.places.forEachIndexed { i, pl ->
+        store.places.forEach { pl ->
             val ow = WeatherRepo.others[pl.name]
-            val t = tone(if (i % 2 == 0) Tone.NONE else Tone.TINT)
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .toned(t, 20.dp)
-                    .pointerInput(pl) { detectTapGestures(onLongPress = { removing = pl }) }
-                    .padding(horizontal = 18.dp, vertical = 14.dp)
+            Card(
+                modifier = Modifier.pointerInput(pl) { detectTapGestures(onLongPress = { removing = pl }) },
+                padding = PaddingValues(horizontal = 18.dp, vertical = 14.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(pl.name, color = t.fg, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        Text(pl.name, color = p.ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         Text(
                             if (ow != null) "${weatherText(ow.code)} · Taupunkt ${deg(ow.dew)}" else "–",
-                            color = t.sub, fontSize = 13.sp
+                            color = p.sub, fontSize = 13.sp
                         )
                     }
-                    if (ow != null) TwIcon(weatherIcon(ow.code, ow.day), size = 26.dp, tint = t.fg)
+                    if (ow != null) TwIcon(weatherIcon(ow.code, ow.day), size = 26.dp, tint = weatherTint(ow.code, ow.day))
                     Text(
-                        if (ow != null) deg(ow.temp) else "–", style = num(30.sp, FontWeight.SemiBold), color = t.fg,
+                        if (ow != null) deg(ow.temp) else "–", style = num(30.sp, FontWeight.SemiBold), color = p.ink,
+                        textAlign = TextAlign.End,
                         modifier = Modifier
                             .width(70.dp)
                             .padding(start = 8.dp)
@@ -237,62 +236,80 @@ fun WeatherScreen() {
     }
 }
 
-private enum class Tone { STRONG, TINT, NONE, DARK }
-
-private data class ToneColors(val bg: Color, val fg: Color, val sub: Color, val icon: Color, val ring: Color = Color.Transparent)
-
-private fun Modifier.toned(t: ToneColors, radius: androidx.compose.ui.unit.Dp): Modifier {
-    val shape = RoundedCornerShape(radius)
-    var m = this.clip(shape).background(t.bg)
-    if (t.ring != Color.Transparent) m = m.border(1.dp, t.ring, shape)
-    return m
-}
-
-/** Abstufungen derselben Schemafarbe: kräftig, zart getönt, ohne Ton, dunkel. */
+/**
+ * Farbe der Wettersymbole, einheitlich aus der Schemafarbe abgeleitet:
+ * Sonne/klar in voller Schemafarbe, Wolken/Nebel weicher, Regen/Schnee/Gewitter tiefer.
+ */
 @Composable
-private fun tone(t: Tone): ToneColors {
+fun weatherTint(code: Int, day: Boolean): Color {
     val p = LocalPal.current
-    return when (t) {
-        Tone.STRONG -> ToneColors(p.fill, p.onFill, p.onFill.copy(alpha = 0.62f), p.onFill)
-        Tone.TINT -> ToneColors(p.fill.copy(alpha = if (p.dark) 0.16f else 0.24f), p.ink, p.sub, p.ink)
-        Tone.NONE -> ToneColors(p.card, p.ink, p.sub, p.ink, p.cardRing)
-        Tone.DARK -> ToneColors(p.ink, p.bg, p.bg.copy(alpha = 0.6f), p.fill)
+    return when (code) {
+        0, 1 -> if (day) p.fill else lerp(p.fill, p.sub, 0.35f)
+        2, 3, 45, 48 -> lerp(p.fill, p.sub, 0.5f)
+        else -> lerp(p.fill, p.ink, if (p.dark) 0.15f else 0.38f)
     }
 }
 
+private fun Modifier.tile(tinted: Boolean, radius: androidx.compose.ui.unit.Dp): Modifier = composed {
+    val p = LocalPal.current
+    val shape = RoundedCornerShape(radius)
+    var m = this.clip(shape).background(if (tinted) p.fill.copy(alpha = if (p.dark) 0.14f else 0.2f) else p.card)
+    if (!tinted && p.cardRing != Color.Transparent) m = m.border(1.dp, p.cardRing, shape)
+    m
+}
+
 @Composable
-private fun StatTile(label: String, value: String, icon: ImageVector, tn: Tone, modifier: Modifier) {
-    val t = tone(tn)
+private fun StatTile(label: String, value: String, icon: ImageVector, modifier: Modifier) {
+    val p = LocalPal.current
     Column(
         modifier
-            .toned(t, 18.dp)
+            .tile(false, 18.dp)
             .padding(horizontal = 12.dp, vertical = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TwIcon(icon, tint = t.sub, size = 14.dp)
-            Text(label, color = t.sub, fontSize = 12.sp, modifier = Modifier.padding(start = 5.dp), maxLines = 1)
+            TwIcon(icon, tint = p.fill, size = 15.dp)
+            Text(label, color = p.sub, fontSize = 12.sp, modifier = Modifier.padding(start = 5.dp), maxLines = 1)
         }
         Spacer(Modifier.height(6.dp))
-        Text(value, style = num(21.sp, FontWeight.SemiBold), color = t.fg, maxLines = 1)
+        Text(value, style = num(21.sp, FontWeight.SemiBold), color = p.ink, maxLines = 1)
+    }
+}
+
+/** Gradzahl, deren Ziffern exakt mittig stehen (das °-Zeichen wird links unsichtbar ausgeglichen). */
+private fun centeredDeg(v: Double) = buildAnnotatedString {
+    if (v.isNaN()) {
+        append("–")
+    } else {
+        withStyle(SpanStyle(color = Color.Transparent)) { append("°") }
+        append("${v.roundToInt()}°")
     }
 }
 
 @Composable
 private fun Forecast(
-    label: String, icon: ImageVector, temp: String, low: String?, tn: Tone, modifier: Modifier, pill: Boolean = false
+    label: String, icon: ImageVector, tint: Color, temp: Double, low: Double?, modifier: Modifier,
+    strongLabel: Boolean = false, padV: androidx.compose.ui.unit.Dp = 4.dp
 ) {
-    val t = tone(tn).let { if (!pill) it.copy(ring = Color.Transparent) else it }
+    val p = LocalPal.current
     Column(
-        modifier
-            .toned(t, if (pill) 22.dp else 16.dp)
-            .padding(vertical = if (pill) 14.dp else 10.dp),
+        modifier.padding(vertical = padV),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(if (pill) 8.dp else 6.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(label, color = if (tn == Tone.NONE && !pill) t.sub else t.fg, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        TwIcon(icon, size = 24.dp, tint = t.icon)
-        Text(temp, style = num(16.sp, FontWeight.SemiBold), color = t.fg, maxLines = 1)
-        if (low != null) Text(low, style = num(13.sp, FontWeight.Normal), color = t.sub, maxLines = 1)
+        Text(
+            label, color = if (strongLabel) p.ink else p.sub, fontSize = 13.sp,
+            fontWeight = if (strongLabel) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+        )
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { TwIcon(icon, size = 24.dp, tint = tint) }
+        Text(
+            centeredDeg(temp), style = num(16.sp, FontWeight.SemiBold), color = p.ink,
+            maxLines = 1, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+        )
+        if (low != null) Text(
+            centeredDeg(low), style = num(13.sp, FontWeight.Normal), color = p.sub,
+            maxLines = 1, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

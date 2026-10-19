@@ -82,7 +82,7 @@ import kotlinx.coroutines.launch
 data class Tech(val id: String, val name: String, val v: List<Int>)
 
 val TECHS = listOf(
-    Tech("478", "4-7-8 (Dr. Weil)", listOf(4, 7, 8, 0)),
+    Tech("478", "4-7-8 Dr. Weil", listOf(4, 7, 8, 0)),
     Tech("koh", "Herzkohärenz", listOf(5, 0, 5, 0)),
     Tech("box", "Boxatmung", listOf(4, 4, 4, 4)),
     Tech("zwerch", "Zwerchfell", listOf(4, 0, 6, 0)),
@@ -151,7 +151,7 @@ fun BreathScreen() {
             for (ph in phases()) {
                 label = ph.label
                 if (sound) {
-                    if (ph.freq > 0) Chime.piano(ph.freq, 0.4, 4.0) else Chime.piano(-ph.freq, 0.12, 4.0)
+                    if (ph.freq > 0) Chime.piano(ph.freq, 0.6) else Chime.piano(-ph.freq, 0.17)
                 }
                 val anim = launch { scale.animateTo(ph.to, tween(ph.sec * 1000, easing = Ease)) }
                 delay(ph.sec * 1000L)
@@ -208,13 +208,6 @@ fun BreathScreen() {
         ) {
             val d = minOf(maxWidth - 60.dp, maxHeight - 16.dp, 300.dp)
             Box(Modifier.size(d), contentAlignment = Alignment.Center) {
-                val ring = p.line
-                Canvas(Modifier.fillMaxSize()) {
-                    drawCircle(
-                        color = ring, radius = size.minDimension / 2 - 2.dp.toPx(),
-                        style = Stroke(width = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f)))
-                    )
-                }
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -225,20 +218,17 @@ fun BreathScreen() {
                         .clip(CircleShape)
                         .background(p.fill)
                 )
+                // Zwei zarte, durchgehende Kreise: ganz eingeatmet (außen) und ganz ausgeatmet (innen)
+                val ringCol = p.ink.copy(alpha = if (p.dark) 0.22f else 0.13f)
+                Canvas(Modifier.fillMaxSize()) {
+                    val sw = 1.3.dp.toPx()
+                    val r = size.minDimension / 2
+                    drawCircle(color = ringCol, radius = r - sw / 2, style = Stroke(width = sw))
+                    drawCircle(color = ringCol, radius = r * SMALL, style = Stroke(width = sw))
+                }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(label, color = p.onFill, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                 }
-            }
-        }
-        Card(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            padding = PaddingValues(horizontal = 4.dp, vertical = 12.dp)
-        ) {
-            Row {
-                StepperBox("Ein", "$inh s", { inh = (inh - 1).coerceAtLeast(1); tech = "custom"; persist() }, { inh = (inh + 1).coerceAtMost(30); tech = "custom"; persist() }, Modifier.weight(1f))
-                StepperBox("Halten", "$hold s", { hold = (hold - 1).coerceAtLeast(0); tech = "custom"; persist() }, { hold = (hold + 1).coerceAtMost(30); tech = "custom"; persist() }, Modifier.weight(1f))
-                StepperBox("Aus", "$exh s", { exh = (exh - 1).coerceAtLeast(1); tech = "custom"; persist() }, { exh = (exh + 1).coerceAtMost(30); tech = "custom"; persist() }, Modifier.weight(1f))
-                StepperBox("Pause", "$pause s", { pause = (pause - 1).coerceAtLeast(0); tech = "custom"; persist() }, { pause = (pause + 1).coerceAtMost(30); tech = "custom"; persist() }, Modifier.weight(1f))
             }
         }
         Row(
@@ -472,7 +462,6 @@ fun SettingsScreen(nav: Nav) {
                 Divider()
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Dunkelmodus", color = p.ink, fontSize = 16.sp, modifier = Modifier.weight(1f))
                     val idx = when (store.darkMode) {
                         1 -> 0
                         2 -> 1
@@ -486,7 +475,7 @@ fun SettingsScreen(nav: Nav) {
                                 else -> 0
                             }
                         )
-                    }, Modifier.width(210.dp))
+                    }, Modifier.fillMaxWidth())
                 }
             }
 

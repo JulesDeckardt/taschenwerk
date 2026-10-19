@@ -69,7 +69,39 @@ class Store private constructor(ctx: Context) {
         loadZones()
         loadPlaces()
         loadWorkouts()
+        migrateWorkouts()
         loadPresets()
+    }
+
+    /** Einmalig: Tabata-Vorlage raus, Hauptworkout heißt „Workout“, Apnoe-Tabellen dazu. */
+    private fun migrateWorkouts() {
+        if (sp.getBoolean("mig_apnea1", false)) return
+        workouts.removeAll { it.id == "tabata" && it.name == "Tabata" }
+        val i = workouts.indexOfFirst { it.id == "mein" }
+        if (i >= 0 && workouts[i].name == "Mein Workout") workouts[i] = workouts[i].copy(name = "Workout")
+        if (workouts.none { it.id == "apnea_co2" }) workouts.add(apneaCo2())
+        if (workouts.none { it.id == "apnea_o2" }) workouts.add(apneaO2())
+        saveWorkouts()
+        sp.edit().putBoolean("mig_apnea1", true).apply()
+    }
+
+    companion object Tables {
+        /** CO2-Tabelle für 2:00 Bestzeit: Halten konstant 1:00 (50 %), Atmen 2:00 → 0:30 in 15-s-Schritten. */
+        fun apneaCo2(): Workout {
+            val rests = listOf(120, 105, 90, 75, 60, 45, 30, 30)
+            return Workout("apnea_co2", "Apnoe CO2", 1, 10, rests.flatMap { listOf(Step("Atmen", it, true), Step("Luft anhalten", 60, false)) })
+        }
+
+        /** O2-Tabelle für 2:00 Bestzeit: Atmen konstant 2:00, Halten 0:40 → 1:35 (max. 80 %). */
+        fun apneaO2(): Workout {
+            val holds = listOf(40, 50, 60, 70, 80, 90, 95, 95)
+            return Workout("apnea_o2", "Apnoe O2", 1, 10, holds.flatMap { listOf(Step("Atmen", 120, true), Step("Luft anhalten", it, false)) })
+        }
+
+        @Volatile private var inst: Store? = null
+        fun get(ctx: Context): Store = inst ?: synchronized(this) {
+            inst ?: Store(ctx.applicationContext).also { inst = it }
+        }
     }
 
     fun applyScheme(s: Scheme) { scheme = s; sp.edit().putString("scheme", s.name).apply() }
@@ -193,13 +225,7 @@ class Store private constructor(ctx: Context) {
         if (raw == null) {
             workouts.add(
                 Workout(
-                    "tabata", "Tabata", 8, 10,
-                    listOf(Step("Arbeit", 20, false), Step("Pause", 10, true))
-                )
-            )
-            workouts.add(
-                Workout(
-                    "mein", "Mein Workout", 3, 10,
+                    "mein", "Workout", 3, 10,
                     listOf(
                         Step("Liegestütze", 30, false), Step("Pause", 20, true),
                         Step("Crunches", 30, false), Step("Pause", 20, true),
@@ -269,10 +295,4 @@ class Store private constructor(ctx: Context) {
         sp.edit().putString("presets", arr.toString()).apply()
     }
 
-    companion object {
-        @Volatile private var inst: Store? = null
-        fun get(ctx: Context): Store = inst ?: synchronized(this) {
-            inst ?: Store(ctx.applicationContext).also { inst = it }
-        }
-    }
 }

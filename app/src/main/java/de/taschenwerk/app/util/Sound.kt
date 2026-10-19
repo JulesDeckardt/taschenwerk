@@ -52,7 +52,7 @@ object Chime {
             }
             val detune = 1.0012
             val attack = 0.012
-            val fade = 0.35
+            val fade = 0.8
             var norm = 0.0
             amps.forEach { norm += it }
             for (i in 0 until n) {
@@ -60,10 +60,10 @@ object Chime {
                 var s = 0.0
                 for (k in amps.indices) {
                     val f = parts[k]
-                    val decay = exp(-t * (0.9 + 0.75 * k))
+                    val decay = exp(-t * (0.42 + 0.5 * k))
                     s += amps[k] * decay * (sin(2 * PI * f * t) + 0.6 * sin(2 * PI * f * detune * t)) / 1.6
                 }
-                val body = 0.72 * exp(-t / 0.55) + 0.28 * exp(-t / 2.6)
+                val body = 0.55 * exp(-t / 1.1) + 0.45 * exp(-t / 4.2)
                 val att = if (t < attack) (t / attack).let { it * it * (3 - 2 * it) } else 1.0
                 val tail = if (t > dur - fade) ((dur - t) / fade).coerceIn(0.0, 1.0) else 1.0
                 out[i] = (s / norm * body * att * tail * vol * 32767).toInt().coerceIn(-32767, 32767).toShort()
@@ -138,13 +138,36 @@ object Chime {
 
     fun play(freq: Double, vol: Double = 0.5, dur: Double = 1.6) = out(samples(freq, vol, dur))
 
-    fun piano(freq: Double, vol: Double = 0.4, dur: Double = 4.0) = out(pianoSamples(freq, vol, dur))
+    fun piano(freq: Double, vol: Double = 0.6, dur: Double = 7.0) = out(pianoSamples(freq, vol, dur))
+
+    /** Entspanntes Abschluss-Motiv „dim, dim, dim, diiim“ (aufsteigend, weich ausklingend). */
+    fun finish(vol: Double = 0.5) {
+        thread(isDaemon = true) {
+            val buf = cache.getOrPut("finish$vol") {
+                val notes = doubleArrayOf(392.0, 493.88, 587.33, 783.99)
+                val gap = 0.42
+                val noteDur = 4.5
+                val n = (SR * (gap * (notes.size - 1) + noteDur)).toInt()
+                val mix = DoubleArray(n)
+                notes.forEachIndexed { i, f ->
+                    val one = pianoSamples(f, 1.0, noteDur)
+                    val off = (i * gap * SR).toInt()
+                    val g = if (i == notes.size - 1) 0.9 else 0.7
+                    for (k in one.indices) if (off + k < n) mix[off + k] += one[k] / 32767.0 * g
+                }
+                var peak = 0.0
+                mix.forEach { if (abs(it) > peak) peak = abs(it) }
+                ShortArray(n) { (mix[it] / peak * vol * 32767).toInt().coerceIn(-32767, 32767).toShort() }
+            }
+            out(buf)
+        }
+    }
 
     fun bell(vol: Double = 0.75) = out(bellSamples(vol))
 
     /** Vorab berechnen, damit der erste Ton ohne Verzögerung kommt. */
     fun warm(vararg freqs: Double) {
-        thread(isDaemon = true) { freqs.forEach { pianoSamples(it, 0.4, 4.0) } }
+        thread(isDaemon = true) { freqs.forEach { pianoSamples(it, 0.6, 7.0); pianoSamples(it, 0.17, 7.0) } }
     }
 
     fun warmBell() {

@@ -124,10 +124,6 @@ fun StartScreen(nav: Nav) {
                     },
                     style = num(50.sp), color = p.ink
                 )
-                Text(
-                    "Ich liebe Ellen ♥", color = p.accent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
             }
             CircleButton(Ic.more, { nav.overlay = Overlay.Settings }, size = 44.dp, bg = p.bg, desc = "Einstellungen")
         }
@@ -139,33 +135,50 @@ fun StartScreen(nav: Nav) {
             padding = PaddingValues(horizontal = 18.dp, vertical = 14.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TwIcon(if (w != null) weatherIcon(w.code, w.day) else Ic.cloudSun, size = 40.dp)
+                TwIcon(
+                    if (w != null) weatherIcon(w.code, w.day) else Ic.cloudSun, size = 40.dp,
+                    tint = if (w != null) weatherTint(w.code, w.day) else p.fill
+                )
                 Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(WeatherRepo.homeName, color = p.ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     Text(
                         when {
-                            w != null -> "${weatherText(w.code)} · ${fmt(w.sunH, 1)} Std. Sonne"
+                            w != null -> weatherText(w.code)
                             WeatherRepo.loading -> "Wird geladen …"
                             !Loc.hasPermission(ctx) -> "Tippen für Standort-Wetter"
                             else -> WeatherRepo.error ?: "–"
                         },
-                        color = p.sub, fontSize = 13.sp, maxLines = 1
+                        color = p.sub, fontSize = 14.sp, maxLines = 1
                     )
-                }
-                Spacer(Modifier.width(8.dp))
-                Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(IntrinsicSize.Max)) {
-                    Text(
-                        if (w != null) "${w.temp.roundToInt()}°" else "–", style = num(32.sp, FontWeight.SemiBold), color = p.ink,
-                        maxLines = 1, softWrap = false
-                    )
-                    if (w != null && !w.dew.isNaN()) {
-                        Text(
-                            "Taupunkt ${w.dew.roundToInt()}°", color = p.sub, fontSize = 11.sp,
-                            maxLines = 1, softWrap = false
-                        )
+                    if (w != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TwIcon(Ic.sun, size = 14.dp, tint = p.accent)
+                            Text(
+                                "${fmt(w.sunH, 1)} Std.", color = p.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(start = 4.dp), maxLines = 1
+                            )
+                            if (!w.dew.isNaN()) {
+                                Box(
+                                    Modifier
+                                        .padding(horizontal = 10.dp)
+                                        .size(width = 1.dp, height = 12.dp)
+                                        .background(p.line)
+                                )
+                                TwIcon(Ic.droplet, size = 13.dp, tint = p.sub)
+                                Text(
+                                    "Taupunkt ${w.dew.roundToInt()}°", color = p.sub, fontSize = 14.sp,
+                                    modifier = Modifier.padding(start = 4.dp), maxLines = 1
+                                )
+                            }
+                        }
                     }
                 }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (w != null) "${w.temp.roundToInt()}°" else "–", style = num(36.sp, FontWeight.SemiBold), color = p.ink,
+                    maxLines = 1, softWrap = false
+                )
             }
             if (!Loc.hasPermission(ctx)) {
                 Spacer(Modifier.height(8.dp))
@@ -218,20 +231,25 @@ fun StartScreen(nav: Nav) {
 
         // Schnellzugriff
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            QuickTile("5 Min.", Ic.hourglass, Modifier.weight(1f)) {
-                TimerStore.start(ctx, 5 * 60_000L, "5 Minuten")
+            QuickTile("60 Min.", null, Modifier.weight(1f), badge = "60") {
+                TimerStore.start(ctx, 60 * 60_000L, "60 Minuten")
                 nav.go(Tab.UHR, 3)
             }
-            QuickTile("Workout", Ic.pulse, Modifier.weight(1f)) { nav.go(Tab.UHR, 3) }
+            QuickTile("Workout", Ic.pulse, Modifier.weight(1f)) {
+                val main = store.workouts.firstOrNull { it.id == "mein" }
+                    ?: store.workouts.firstOrNull { !it.id.startsWith("apnea") }
+                    ?: store.workouts.firstOrNull()
+                if (main != null) nav.overlay = Overlay.RunWorkout(main.id) else nav.go(Tab.UHR, 3)
+            }
+            QuickTile("Timer", Ic.hourglass, Modifier.weight(1f)) { nav.go(Tab.UHR, 3) }
             QuickTile("Stoppuhr", Ic.stopwatch, Modifier.weight(1f)) { nav.go(Tab.UHR, 2) }
-            QuickTile("Prozent", Ic.percent, Modifier.weight(1f)) { nav.go(Tab.RECHNER, 1) }
         }
         Spacer(Modifier.height(8.dp))
     }
 }
 
 @Composable
-private fun QuickTile(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier, onClick: () -> Unit) {
+private fun QuickTile(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector?, modifier: Modifier, badge: String? = null, onClick: () -> Unit) {
     val p = LocalPal.current
     Card(modifier = modifier.height(78.dp), radius = 18.dp, padding = PaddingValues(6.dp), onClick = onClick) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -241,7 +259,10 @@ private fun QuickTile(label: String, icon: androidx.compose.ui.graphics.vector.I
                     .clip(CircleShape)
                     .background(p.fill.copy(alpha = if (p.dark) 0.25f else 0.45f)),
                 contentAlignment = Alignment.Center
-            ) { TwIcon(icon, size = 19.dp) }
+            ) {
+                if (icon != null) TwIcon(icon, size = 19.dp)
+                else Text(badge ?: "", style = num(14.sp, FontWeight.Bold), color = p.ink)
+            }
             Spacer(Modifier.height(5.dp))
             Text(label, color = p.ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
@@ -339,15 +360,10 @@ private fun CurrencyRow(code: String, value: String, onPick: (String) -> Unit, a
                 }
             }
         }
-        Text(
-            currencyName(code), color = p.sub, fontSize = 12.sp, maxLines = 1,
-            modifier = Modifier
-                .padding(start = 10.dp)
-                .weight(1f)
-        )
+        Spacer(Modifier.width(12.dp))
         NumberField(
             value = value, onChange = onValue,
-            modifier = Modifier.width(150.dp),
+            modifier = Modifier.weight(1f),
             style = num(28.sp), align = TextAlign.End, boxed = false,
             color = if (accent) p.accent else p.ink
         )

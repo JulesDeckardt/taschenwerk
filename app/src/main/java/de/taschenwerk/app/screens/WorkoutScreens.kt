@@ -91,6 +91,7 @@ fun WorkoutEditScreen(nav: Nav, id: String?) {
     }
     var announce by remember { mutableStateOf(store.getBool("announce", true)) }
     var voiceLang by remember { mutableStateOf(store.getString("voiceLang") ?: "auto") }
+    var showGuide by remember { mutableStateOf(false) }
     val wid = remember { existing?.id ?: ("w" + System.currentTimeMillis()) }
 
     fun build() = Workout(wid, name.ifBlank { "Workout" }, rounds, prep, steps.toList())
@@ -116,6 +117,7 @@ fun WorkoutEditScreen(nav: Nav, id: String?) {
                     .weight(1f)
                     .padding(start = 4.dp)
             )
+            CircleButton(Ic.info, { showGuide = true }, size = 40.dp, bg = p.bg, iconSize = 20.dp, fg = p.sub, desc = "Anleitung")
             if (existing != null) {
                 CircleButton(Ic.trash, {
                     store.removeWorkout(existing.id)
@@ -184,7 +186,7 @@ fun WorkoutEditScreen(nav: Nav, id: String?) {
                         }
                         Spacer(Modifier.width(10.dp))
                         if (st.pause) {
-                            Text("Pause", color = p.sub, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                            Text(st.name, color = p.sub, fontSize = 16.sp, modifier = Modifier.weight(1f))
                         } else {
                             BasicTextField(
                                 value = st.name, onValueChange = { v -> steps[i] = st.copy(name = v.take(24)) },
@@ -245,6 +247,7 @@ fun WorkoutEditScreen(nav: Nav, id: String?) {
             Spacer(Modifier.height(20.dp))
         }
     }
+    if (showGuide) GuideDialog(build()) { showGuide = false }
 }
 
 private enum class Kind { PREP, WORK, PAUSE }
@@ -278,6 +281,7 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
     }
     val segs = remember(w) { segments(w) }
     var announce by remember { mutableStateOf(store.getBool("announce", true)) }
+    var showGuide by remember { mutableStateOf(false) }
     val voiceMode = remember { store.getString("voiceLang") ?: "auto" }
     val scope = rememberCoroutineScope()
 
@@ -339,9 +343,10 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
         val wait = if (bell) 1100L else 0L
         if (i >= segs.size) {
             finished = true
-            if (!bell) Beep.long()
             scope.launch {
                 delay(wait)
+                Chime.finish()
+                delay(1900)
                 say((if (english) "Well done" else "Geschafft") to lang)
             }
             return
@@ -357,7 +362,8 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
                 Kind.WORK -> say(s.name to nameLocale(s.name))
                 Kind.PAUSE -> {
                     val next = segs.drop(idx + 1).firstOrNull { it.kind == Kind.WORK }
-                    if (next != null) say((if (english) "Rest. Next up" else "Pause. Danach") to lang, next.name to nameLocale(next.name))
+                    if (s.name != "Pause") say(s.name to nameLocale(s.name))
+                    else if (next != null) say((if (english) "Rest. Next up" else "Pause. Danach") to lang, next.name to nameLocale(next.name))
                     else say((if (english) "Rest" else "Pause") to lang)
                 }
                 Kind.PREP -> {
@@ -428,7 +434,8 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
             Text(w.name, color = p.ink, fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = Modifier
                 .weight(1f)
                 .padding(start = 4.dp))
-            Text("Runde ${s.round} / ${w.rounds}", color = p.sub, fontSize = 15.sp, modifier = Modifier.padding(end = 4.dp))
+            Text("Runde ${s.round} / ${w.rounds}", color = p.sub, fontSize = 15.sp, modifier = Modifier.padding(end = 2.dp))
+            CircleButton(Ic.info, { showGuide = true }, size = 36.dp, bg = p.bg, fg = p.sub, iconSize = 18.dp, desc = "Anleitung")
             CircleButton(
                 if (announce) Ic.speaker else Ic.speakerOff,
                 {
@@ -436,7 +443,7 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
                     store.putBool("announce", announce)
                     if (!announce) runCatching { tts[0]?.stop() }
                 },
-                size = 44.dp, bg = if (announce) p.fill else p.track, fg = if (announce) p.onFill else p.sub, iconSize = 20.dp,
+                size = 36.dp, bg = p.bg, fg = if (announce) p.ink else p.muted, iconSize = 18.dp,
                 desc = if (announce) "Stimme aus" else "Stimme an"
             )
         }
@@ -449,8 +456,9 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
             Spacer(Modifier.height(16.dp))
             val pill = when (s.kind) {
                 Kind.PREP -> "VORBEREITUNG"
-                Kind.PAUSE -> "PAUSE"
-                Kind.WORK -> if (s.exCount > 1) "ÜBUNG ${s.exIdx} / ${s.exCount}" else "ARBEIT"
+                Kind.PAUSE -> s.name.uppercase()
+                Kind.WORK -> if (w.id.startsWith("apnea")) "HALTEN ${s.exIdx} / ${s.exCount}"
+                    else if (s.exCount > 1) "ÜBUNG ${s.exIdx} / ${s.exCount}" else "ÜBUNG"
             }
             Box(
                 Modifier
@@ -465,7 +473,7 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
             }
             Spacer(Modifier.height(10.dp))
             Text(
-                if (s.kind == Kind.PAUSE) "Pause" else s.name,
+                s.name,
                 color = p.ink, fontSize = 34.sp, fontWeight = FontWeight.Bold, maxLines = 1
             )
             Text(
@@ -524,7 +532,7 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
                     Divider()
                     Row(Modifier.height(42.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            if (n.kind == Kind.PAUSE) "Pause" else n.name,
+                            n.name,
                             color = if (n.kind == Kind.PAUSE) p.sub else p.ink,
                             fontSize = 16.sp, fontWeight = if (n.kind == Kind.PAUSE) FontWeight.Normal else FontWeight.SemiBold,
                             modifier = Modifier.weight(1f)
@@ -559,4 +567,5 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
             CircleButton(Ic.skipNext, { go(idx + 1) }, bg = p.track, desc = "Überspringen")
         }
     }
+    if (showGuide) GuideDialog(w) { showGuide = false }
 }

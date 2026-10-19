@@ -120,6 +120,7 @@ object Ic {
     val percent by lazy { stroke("percent", "M19 5L5 19", c(7f, 7f, 2.5f), c(17f, 17f, 2.5f)) }
     val backspace by lazy { stroke("backspace", "M9 5h11v14H9l-6-7z", "M12 9.5l5 5M17 9.5l-5 5", w = 1.9f) }
     val history by lazy { stroke("history", "M4 12a8 8 0 1 0 2.3-5.6M4 4v5h5", "M12 8v4l3 2") }
+    val info by lazy { stroke("info", "M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0", "M12 11v5.5", "M12 7.6v.4", w = 1.8f) }
     val speaker by lazy { stroke("speaker", "M4 10v4h4l5 4V6L8 10z", "M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12", w = 1.9f) }
     val speakerOff by lazy { stroke("speakerOff", "M4 10v4h4l5 4V6L8 10z", "M17 9.5l5 5M22 9.5l-5 5", w = 1.9f) }
     val ruler by lazy {
