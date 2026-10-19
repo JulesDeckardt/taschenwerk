@@ -676,13 +676,12 @@ private fun UnitRow(
                 modifier = Modifier.weight(1f)
             )
         } else if (textInput) {
-            BasicTextField(
+            de.taschenwerk.app.ui.SelectAllField(
                 value = value,
-                onValueChange = { onValue(it.filter { c -> c.isLetterOrDigit() }.take(40)) },
-                singleLine = true,
+                onValueChange = onValue,
+                filter = { it.filter { c -> c.isLetterOrDigit() }.take(40) },
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, keyboardType = KeyboardType.Ascii),
                 textStyle = num(26.sp).copy(color = p.ink, textAlign = TextAlign.End),
-                cursorBrush = SolidColor(p.ink),
                 modifier = Modifier.weight(1f)
             )
         } else {

@@ -18,7 +18,9 @@ data class Alarm(
     /** Bit 0 = Montag … Bit 6 = Sonntag. 0 = einmalig. */
     val days: Int,
     val enabled: Boolean,
-    val label: String = ""
+    val label: String = "",
+    /** Weckton-URI, leer = Standard-Weckton des Systems. */
+    val sound: String = ""
 )
 
 data class Step(val name: String, val sec: Int, val pause: Boolean)
@@ -103,7 +105,7 @@ class Store private constructor(ctx: Context) {
                 alarms.add(
                     Alarm(
                         o.getInt("id"), o.getInt("h"), o.getInt("m"), o.optInt("d", 0),
-                        o.optBoolean("on", true), o.optString("l", "")
+                        o.optBoolean("on", true), o.optString("l", ""), o.optString("s", "")
                     )
                 )
             }
@@ -117,7 +119,7 @@ class Store private constructor(ctx: Context) {
         alarms.forEach {
             arr.put(
                 JSONObject().put("id", it.id).put("h", it.hour).put("m", it.minute)
-                    .put("d", it.days).put("on", it.enabled).put("l", it.label)
+                    .put("d", it.days).put("on", it.enabled).put("l", it.label).put("s", it.sound)
             )
         }
         sp.edit().putString("alarms", arr.toString()).commit()

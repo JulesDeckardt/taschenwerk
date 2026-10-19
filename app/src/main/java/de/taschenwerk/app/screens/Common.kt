@@ -7,7 +7,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -31,6 +34,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -47,6 +53,7 @@ import de.taschenwerk.app.util.two
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.time.LocalDateTime
+import kotlin.math.abs
 
 @Composable
 fun rememberNow(periodMs: Long = 1000L): State<LocalDateTime> = produceState(LocalDateTime.now(), periodMs) {
@@ -95,7 +102,8 @@ fun SubHeader(title: String, onBack: () -> Unit, action: String? = null, onActio
 }
 
 /**
- * Zahlenrad (scrollbar, rastet ein). Zeigt drei Zeilen, die mittlere ist ausgewählt.
+ * Zahlenrad: gleitet weich, rastet mittig ein. Größe und Deckkraft der Ziffern
+ * werden stufenlos aus dem Abstand zur Mitte berechnet (keine Sprünge).
  */
 @Composable
 fun NumberWheel(
@@ -103,12 +111,12 @@ fun NumberWheel(
     value: Int,
     onChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    itemHeight: Dp = 60.dp,
-    big: TextUnit = 50.sp,
-    small: TextUnit = 28.sp,
-    width: Dp = 84.dp
+    itemHeight: Dp = 46.dp,
+    big: TextUnit = 38.sp,
+    width: Dp = 72.dp
 ) {
     val p = LocalPal.current
+    val haptic = LocalHapticFeedback.current
     val total = count * 400
     val startIndex = remember(count) { count * 200 + value - 1 }
     val state = rememberLazyListState(initialFirstVisibleItemIndex = startIndex)
@@ -120,30 +128,52 @@ fun NumberWheel(
     }
     val cb by rememberUpdatedState(onChange)
     LaunchedEffect(state) {
-        snapshotFlow { center }.distinctUntilChanged().collect { cb(((it % count) + count) % count) }
+        var first = true
+        snapshotFlow { center }.distinctUntilChanged().collect {
+            cb(((it % count) + count) % count)
+            if (!first) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            first = false
+        }
     }
-    LazyColumn(
-        state = state,
-        flingBehavior = rememberSnapFlingBehavior(state),
-        modifier = modifier
-            .width(width)
-            .height(itemHeight * 3),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        items(total) { idx ->
-            val v = ((idx % count) + count) % count
-            val sel = idx == center
-            Box(
-                Modifier
-                    .height(itemHeight)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    two(v),
-                    style = num(if (sel) big else small, if (sel) FontWeight.Bold else FontWeight.SemiBold),
-                    color = if (sel) p.ink else p.muted.copy(alpha = 0.55f)
-                )
+    val style = num(big, FontWeight.SemiBold)
+    Box(modifier.width(width).height(itemHeight * 3), contentAlignment = Alignment.Center) {
+        // dezente Auswahlfläche hinter der mittleren Zeile
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(itemHeight)
+                .clip(RoundedCornerShape(14.dp))
+                .background(p.track.copy(alpha = 0.7f))
+        )
+        LazyColumn(
+            state = state,
+            flingBehavior = rememberSnapFlingBehavior(state, SnapPosition.Center),
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            items(total) { idx ->
+                val v = ((idx % count) + count) % count
+                Box(
+                    Modifier
+                        .height(itemHeight)
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            val li = state.layoutInfo
+                            val info = li.visibleItemsInfo.firstOrNull { it.index == idx }
+                            val mid = (li.viewportStartOffset + li.viewportEndOffset) / 2f
+                            val d = if (info == null) 1f
+                            else (abs(info.offset + info.size / 2f - mid) / info.size).coerceAtMost(1.4f)
+                            val t = (1f - d).coerceIn(0f, 1f)
+                            val sc = 0.62f + 0.38f * t
+                            scaleX = sc
+                            scaleY = sc
+                            alpha = 0.28f + 0.72f * t
+                            rotationX = (if (info != null && info.offset + info.size / 2f < mid) 1f else -1f) * d * 18f
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(two(v), style = style, color = p.ink, maxLines = 1)
+                }
             }
         }
     }

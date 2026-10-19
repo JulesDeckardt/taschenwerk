@@ -6,6 +6,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.composed
 import androidx.compose.foundation.layout.Arrangement
@@ -262,14 +272,62 @@ fun NumberField(
         .background(p.track)
         .padding(horizontal = 8.dp) else modifier
     Box(m, contentAlignment = Alignment.CenterStart) {
-        BasicTextField(
+        SelectAllField(
             value = value,
-            onValueChange = { s -> onChange(s.filter { it.isDigit() || it == ',' || it == '.' || it == '-' }) },
-            singleLine = true,
+            onValueChange = onChange,
+            filter = { s -> s.filter { it.isDigit() || it == ',' || it == '.' || it == '-' } },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             textStyle = style.copy(color = color, textAlign = align),
-            cursorBrush = SolidColor(p.ink),
             modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+/**
+ * Eingabefeld, das bei jedem Antippen den ganzen Inhalt markiert:
+ * die nächste Eingabe ersetzt die alte Zahl komplett.
+ */
+@Composable
+fun SelectAllField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    filter: (String) -> String = { it },
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    textStyle: TextStyle
+) {
+    val p = LocalPal.current
+    var sel by remember { mutableStateOf(TextRange(value.length)) }
+    var tapPending by remember { mutableStateOf(false) }
+    val interaction = remember { MutableInteractionSource() }
+    LaunchedEffect(interaction) {
+        interaction.interactions.collect { if (it is PressInteraction.Press) tapPending = true }
+    }
+    val safeSel = TextRange(sel.start.coerceIn(0, value.length), sel.end.coerceIn(0, value.length))
+    val selColors = TextSelectionColors(handleColor = p.fill, backgroundColor = p.fill.copy(alpha = 0.45f))
+    CompositionLocalProvider(LocalTextSelectionColors provides selColors) {
+        BasicTextField(
+            value = TextFieldValue(value, safeSel),
+            onValueChange = { nv ->
+                val f = filter(nv.text)
+                if (f == value) {
+                    // nur Cursor/Markierung geändert
+                    sel = if (tapPending) TextRange(0, value.length) else nv.selection
+                    tapPending = false
+                } else {
+                    tapPending = false
+                    sel = if (f == nv.text) nv.selection else TextRange(f.length)
+                    onValueChange(f)
+                }
+            },
+            singleLine = true,
+            keyboardOptions = keyboardOptions,
+            textStyle = textStyle,
+            cursorBrush = SolidColor(p.ink),
+            interactionSource = interaction,
+            modifier = modifier.onFocusChanged { fs ->
+                if (fs.isFocused) sel = TextRange(0, value.length)
+            }
         )
     }
 }

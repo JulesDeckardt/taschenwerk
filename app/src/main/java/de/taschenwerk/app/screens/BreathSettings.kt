@@ -8,6 +8,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -100,7 +110,6 @@ fun BreathScreen() {
     var sound by remember { mutableStateOf(store.getBool("brSound", true)) }
     var running by remember { mutableStateOf(false) }
     var label by remember { mutableStateOf("Bereit") }
-    var count by remember { mutableIntStateOf(0) }
     var cycle by remember { mutableIntStateOf(0) }
     val scale = remember { Animatable(SMALL) }
 
@@ -112,12 +121,18 @@ fun BreathScreen() {
         store.putLong("brPause", pause.toLong())
     }
 
+    // Weiche Klaviertöne: Einatmen G3, Ausatmen D3, Halten/Pause dieselbe Taste ganz leise.
     fun phases() = listOf(
-        Phase("in", "Einatmen", inh, 1f, 528.0),
-        Phase("hold", "Halten", hold, 1f, 440.0),
-        Phase("out", "Ausatmen", exh, SMALL, 396.0),
-        Phase("pause", "Pause", pause, SMALL, 352.0)
+        Phase("in", "Einatmen", inh, 1f, 196.0),
+        Phase("hold", "Halten", hold, 1f, -196.0),
+        Phase("out", "Ausatmen", exh, SMALL, 146.83),
+        Phase("pause", "Pause", pause, SMALL, -146.83)
     ).filter { it.sec > 0 }
+
+    val customs = remember { mutableStateListOf<Tech>().apply { addAll(loadCustom(store)) } }
+    var editCustom by remember { mutableStateOf<Tech?>(null) }
+    var newCustom by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { Chime.warm(196.0, 146.83) }
 
     val view = LocalView.current
     DisposableEffect(running) {
@@ -128,7 +143,6 @@ fun BreathScreen() {
     LaunchedEffect(running) {
         if (!running) {
             label = "Bereit"
-            count = 0
             scale.animateTo(SMALL, tween(900, easing = Ease))
             return@LaunchedEffect
         }
@@ -136,13 +150,11 @@ fun BreathScreen() {
         while (isActive) {
             for (ph in phases()) {
                 label = ph.label
-                if (sound) Chime.play(ph.freq, 0.45, 1.8)
-                val anim = launch { scale.animateTo(ph.to, tween(ph.sec * 1000, easing = Ease)) }
-                for (s in ph.sec downTo 1) {
-                    count = s
-                    if (s != ph.sec && sound) Chime.play(587.0, 0.07, 0.35)
-                    delay(1000)
+                if (sound) {
+                    if (ph.freq > 0) Chime.piano(ph.freq, 0.4, 4.0) else Chime.piano(-ph.freq, 0.12, 4.0)
                 }
+                val anim = launch { scale.animateTo(ph.to, tween(ph.sec * 1000, easing = Ease)) }
+                delay(ph.sec * 1000L)
                 anim.cancel()
             }
             cycle++
@@ -173,6 +185,20 @@ fun BreathScreen() {
                     persist()
                 })
             }
+            customs.forEach { t ->
+                TechChip(t.name, tech == t.id, onTap = {
+                    tech = t.id
+                    inh = t.v[0]; hold = t.v[1]; exh = t.v[2]; pause = t.v[3]
+                    persist()
+                }, onLong = { editCustom = t })
+            }
+            AddChip { newCustom = true }
+        }
+        if (customs.isNotEmpty()) {
+            Text(
+                "Eigene Rhythmen: lange drücken zum Bearbeiten", color = p.muted, fontSize = 11.sp,
+                modifier = Modifier.padding(start = 20.dp, top = 6.dp)
+            )
         }
         BoxWithConstraints(
             Modifier
@@ -200,8 +226,7 @@ fun BreathScreen() {
                         .background(p.fill)
                 )
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(label, color = p.onFill, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                    if (running) Text("$count", style = num(44.sp), color = p.onFill)
+                    Text(label, color = p.onFill, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -239,6 +264,155 @@ fun BreathScreen() {
             }
         }
     }
+
+    if (newCustom || editCustom != null) {
+        val base = editCustom
+        CustomTechDialog(
+            initial = base ?: Tech("", "Mein Rhythmus", listOf(inh, hold, exh, pause)),
+            isNew = base == null,
+            onSave = { t ->
+                val saved = if (base == null) t.copy(id = "c" + System.currentTimeMillis()) else t.copy(id = base.id)
+                val k = customs.indexOfFirst { it.id == saved.id }
+                if (k >= 0) customs[k] = saved else customs.add(saved)
+                saveCustom(store, customs)
+                tech = saved.id
+                inh = saved.v[0]; hold = saved.v[1]; exh = saved.v[2]; pause = saved.v[3]
+                persist()
+                newCustom = false; editCustom = null
+            },
+            onDelete = if (base != null) ({
+                customs.removeAll { it.id == base.id }
+                saveCustom(store, customs)
+                if (tech == base.id) tech = "custom"
+                persist()
+                editCustom = null
+            }) else null,
+            onClose = { newCustom = false; editCustom = null }
+        )
+    }
+}
+
+
+private fun loadCustom(store: Store): List<Tech> = runCatching {
+    val arr = org.json.JSONArray(store.getString("brCustom") ?: "[]")
+    (0 until arr.length()).map {
+        val o = arr.getJSONObject(it)
+        val v = o.getJSONArray("v")
+        Tech(o.getString("id"), o.getString("n"), (0 until 4).map { k -> v.optInt(k, 0) })
+    }
+}.getOrDefault(emptyList())
+
+private fun saveCustom(store: Store, list: List<Tech>) {
+    val arr = org.json.JSONArray()
+    list.forEach { t ->
+        arr.put(org.json.JSONObject().put("id", t.id).put("n", t.name).put("v", org.json.JSONArray(t.v)))
+    }
+    store.putString("brCustom", arr.toString())
+}
+
+@Composable
+private fun TechChip(text: String, selected: Boolean, onTap: () -> Unit, onLong: () -> Unit) {
+    val p = LocalPal.current
+    val shape = RoundedCornerShape(19.dp)
+    var m = Modifier
+        .height(38.dp)
+        .clip(shape)
+        .background(if (selected) p.fill else p.card)
+    if (!selected && p.cardRing != Color.Transparent) m = m.border(1.dp, p.cardRing, shape)
+    Box(
+        m
+            .pointerInput(text) { detectTapGestures(onTap = { onTap() }, onLongPress = { onLong() }) }
+            .padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text, color = if (selected) p.onFill else p.ink, fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun AddChip(onClick: () -> Unit) {
+    val p = LocalPal.current
+    val shape = RoundedCornerShape(19.dp)
+    Row(
+        Modifier
+            .height(38.dp)
+            .clip(shape)
+            .background(p.fill.copy(alpha = if (p.dark) 0.18f else 0.28f))
+            .clickable(onClick = onClick)
+            .padding(start = 10.dp, end = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TwIcon(Ic.plus, size = 16.dp, tint = p.ink)
+        Text("Eigenen", color = p.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp))
+    }
+}
+
+@Composable
+private fun CustomTechDialog(
+    initial: Tech,
+    isNew: Boolean,
+    onSave: (Tech) -> Unit,
+    onDelete: (() -> Unit)?,
+    onClose: () -> Unit
+) {
+    val p = LocalPal.current
+    var name by remember { mutableStateOf(initial.name) }
+    val v = remember { mutableStateListOf<Int>().apply { addAll(initial.v) } }
+    AlertDialog(
+        onDismissRequest = onClose,
+        containerColor = p.card,
+        title = { Text(if (isNew) "Eigener Rhythmus" else "Rhythmus bearbeiten", color = p.ink) },
+        text = {
+            Column {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(p.track)
+                        .padding(12.dp)
+                ) {
+                    BasicTextField(
+                        value = name, onValueChange = { name = it.take(24) }, singleLine = true,
+                        textStyle = TextStyle(color = p.ink, fontSize = 16.sp),
+                        cursorBrush = SolidColor(p.ink), modifier = Modifier.fillMaxWidth(),
+                        decorationBox = { inner -> if (name.isEmpty()) Text("Name", color = p.muted); inner() }
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
+                val labels = listOf("Ein", "Halten", "Aus", "Pause")
+                val mins = listOf(1, 0, 1, 0)
+                Row {
+                    labels.forEachIndexed { k, l ->
+                        StepperBox(
+                            l, "${v[k]} s",
+                            { v[k] = (v[k] - 1).coerceAtLeast(mins[k]) },
+                            { v[k] = (v[k] + 1).coerceAtMost(30) },
+                            Modifier.weight(1f)
+                        )
+                    }
+                }
+                if (onDelete != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Rhythmus löschen", color = p.sub, fontSize = 14.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onDelete)
+                            .padding(vertical = 6.dp, horizontal = 2.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton({ onSave(Tech(initial.id, name.ifBlank { "Mein Rhythmus" }.trim(), v.toList())) }) {
+                Text("Speichern", color = p.ink, fontWeight = FontWeight.SemiBold)
+            }
+        },
+        dismissButton = { TextButton(onClose) { Text("Abbrechen", color = p.sub) } }
+    )
 }
 
 // ------------------------------------------------------------------ Einstellungen

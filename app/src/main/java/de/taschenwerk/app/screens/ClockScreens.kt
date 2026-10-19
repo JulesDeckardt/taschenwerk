@@ -19,6 +19,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextAlign
+import de.taschenwerk.app.alarm.AlarmSounds
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -64,7 +72,6 @@ import de.taschenwerk.app.data.Alarm
 import de.taschenwerk.app.data.Store
 import de.taschenwerk.app.data.TimerPreset
 import de.taschenwerk.app.ui.Card
-import de.taschenwerk.app.ui.Chip
 import de.taschenwerk.app.ui.CircleButton
 import de.taschenwerk.app.ui.Divider
 import de.taschenwerk.app.ui.Fab
@@ -208,9 +215,12 @@ fun AlarmEditScreen(nav: Nav, id: Int?) {
     var minute by remember { mutableIntStateOf(existing?.minute ?: 0) }
     var days by remember { mutableIntStateOf(existing?.days ?: 0) }
     var label by remember { mutableStateOf(existing?.label ?: "") }
+    var sound by remember { mutableStateOf(existing?.sound ?: "") }
+    var pickSound by remember { mutableStateOf(false) }
+    val tick by rememberNow(15_000)
 
     fun save() {
-        val a = Alarm(existing?.id ?: store.newAlarmId(), hour, minute, days, true, label.trim())
+        val a = Alarm(existing?.id ?: store.newAlarmId(), hour, minute, days, true, label.trim(), sound)
         store.upsertAlarm(a)
         AlarmScheduler.schedule(ctx, a)
         Toast.makeText(ctx, "Wecker klingelt ${untilText(a)}", Toast.LENGTH_SHORT).show()
@@ -229,28 +239,82 @@ fun AlarmEditScreen(nav: Nav, id: Int?) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(top = 4.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                NumberWheel(24, hour, { hour = it }, width = 110.dp, big = 64.sp, small = 34.sp, itemHeight = 74.dp)
-                Text(":", style = num(52.sp), color = p.ink)
-                NumberWheel(60, minute, { minute = it }, width = 110.dp, big = 64.sp, small = 34.sp, itemHeight = 74.dp)
+                NumberWheel(24, hour, { hour = it }, width = 86.dp, big = 42.sp, itemHeight = 52.dp)
+                Text(":", style = num(34.sp, FontWeight.SemiBold), color = p.ink, modifier = Modifier.padding(horizontal = 6.dp))
+                NumberWheel(60, minute, { minute = it }, width = 86.dp, big = 42.sp, itemHeight = 52.dp)
             }
+
+            // Wie lange noch bis zum Klingeln
+            key(tick) {
+                val preview = Alarm(0, hour, minute, days, true)
+                val next = AlarmScheduler.nextTrigger(preview)
+                val d = java.time.Duration.between(ZonedDateTime.now(), next)
+                val totalMin = (d.toMinutes() + if (d.seconds % 60 > 0) 1 else 0).coerceAtLeast(0)
+                val hh = totalMin / 60
+                val mm = totalMin % 60
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 2.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        buildAnnotatedString {
+                            if (hh < 24) {
+                                append("Noch ")
+                                withStyle(SpanStyle(color = p.accent, fontWeight = FontWeight.Bold)) {
+                                    append(if (hh > 0) "$hh Std. $mm Min." else "$mm Min.")
+                                }
+                                append(" Schlaf")
+                            } else {
+                                append("Klingelt in ")
+                                withStyle(SpanStyle(color = p.accent, fontWeight = FontWeight.Bold)) {
+                                    append("${hh / 24} T. ${hh % 24} Std.")
+                                }
+                            }
+                        },
+                        color = p.ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Klingelt " + next.format(DateTimeFormatter.ofPattern("EEEE, HH:mm", Locale.GERMAN)) + " Uhr",
+                        color = p.sub, fontSize = 13.sp
+                    )
+                }
+            }
+
             Card {
                 Text("Wiederholen", color = p.sub, fontSize = 13.sp)
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     listOf("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So").forEachIndexed { i, d ->
                         val on = days and (1 shl i) != 0
-                        Chip(d, on, { days = days xor (1 shl i) }, Modifier.weight(1f))
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            DayCircle(d, on) { days = days xor (1 shl i) }
+                        }
                     }
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SmallButton("Einmal", Modifier.weight(1f)) { days = 0 }
                     SmallButton("Mo–Fr", Modifier.weight(1f)) { days = 0b0011111 }
                     SmallButton("Täglich", Modifier.weight(1f)) { days = 0b1111111 }
+                }
+            }
+            Card(onClick = { pickSound = true }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Weckton", color = p.sub, fontSize = 13.sp)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            remember(sound) { AlarmSounds.title(ctx, sound) },
+                            color = p.ink, fontSize = 17.sp, maxLines = 1
+                        )
+                    }
+                    TwIcon(Ic.chevDown, tint = p.sub, size = 18.dp)
                 }
             }
             Card {
@@ -267,11 +331,6 @@ fun AlarmEditScreen(nav: Nav, id: Int?) {
                     }
                 )
             }
-            val preview = Alarm(0, hour, minute, days, true)
-            Text(
-                "Klingelt ${untilText(preview)} · ${daysText(days)}",
-                color = p.sub, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 4.dp)
-            )
             if (existing != null) {
                 SmallButton("Wecker löschen", Modifier.fillMaxWidth()) {
                     AlarmScheduler.cancel(ctx, existing.id)
@@ -281,6 +340,95 @@ fun AlarmEditScreen(nav: Nav, id: Int?) {
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (pickSound) {
+        SoundDialog(sound, onPick = { sound = it }, onClose = { pickSound = false; AlarmSounds.stop() })
+    }
+}
+
+@Composable
+private fun DayCircle(text: String, on: Boolean, onClick: () -> Unit) {
+    val p = LocalPal.current
+    Box(
+        Modifier
+            .padding(horizontal = 2.dp)
+            .widthIn(max = 40.dp)
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clip(CircleShape)
+            .background(if (on) p.fill else p.track)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text,
+            color = if (on) p.onFill else p.sub,
+            fontSize = 13.sp,
+            fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false,
+            textAlign = TextAlign.Center,
+            style = TextStyle(
+                platformStyle = PlatformTextStyle(includeFontPadding = false),
+                lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)
+            )
+        )
+    }
+}
+
+@Composable
+private fun SoundDialog(current: String, onPick: (String) -> Unit, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val p = LocalPal.current
+    val lists = remember { AlarmSounds.list(ctx) }
+    var sel by remember { mutableStateOf(current) }
+    DisposableEffect(Unit) { onDispose { AlarmSounds.stop() } }
+    AlertDialog(
+        onDismissRequest = onClose,
+        containerColor = p.card,
+        title = { Text("Weckton", color = p.ink) },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                item { SoundRow(AlarmSounds.title(ctx, ""), sel.isEmpty()) { sel = ""; AlarmSounds.play(ctx, "") } }
+                if (lists.first.isNotEmpty()) item { SoundHeader("Wecktöne") }
+                items(lists.first) { s -> SoundRow(s.title, sel == s.uri) { sel = s.uri; AlarmSounds.play(ctx, s.uri) } }
+                if (lists.second.isNotEmpty()) item { SoundHeader("Klingeltöne") }
+                items(lists.second) { s -> SoundRow(s.title, sel == s.uri) { sel = s.uri; AlarmSounds.play(ctx, s.uri) } }
+            }
+        },
+        confirmButton = { TextButton({ onPick(sel); onClose() }) { Text("Übernehmen", color = p.ink, fontWeight = FontWeight.SemiBold) } },
+        dismissButton = { TextButton(onClose) { Text("Abbrechen", color = p.sub) } }
+    )
+}
+
+@Composable
+private fun SoundHeader(t: String) {
+    val p = LocalPal.current
+    Text(t, color = p.sub, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+}
+
+@Composable
+private fun SoundRow(title: String, selected: Boolean, onClick: () -> Unit) {
+    val p = LocalPal.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 11.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(20.dp)
+                .clip(CircleShape)
+                .background(if (selected) p.fill else p.track),
+            contentAlignment = Alignment.Center
+        ) {
+            if (selected) Box(Modifier.size(8.dp).clip(CircleShape).background(p.onFill))
+        }
+        Text(title, color = p.ink, fontSize = 16.sp, maxLines = 1, modifier = Modifier.padding(start = 12.dp))
     }
 }
 
@@ -619,17 +767,17 @@ fun TimerPage(nav: Nav) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    NumberWheel(24, h, { h = it })
+                    NumberWheel(24, h, { h = it }, width = 70.dp, big = 34.sp, itemHeight = 46.dp)
                     Text("Std.", color = p.sub, fontSize = 12.sp)
                 }
-                Text(":", style = num(40.sp), color = p.ink, modifier = Modifier.padding(bottom = 18.dp))
+                Text(":", style = num(28.sp, FontWeight.SemiBold), color = p.ink, modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 18.dp))
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    NumberWheel(60, m, { m = it })
+                    NumberWheel(60, m, { m = it }, width = 70.dp, big = 34.sp, itemHeight = 46.dp)
                     Text("Min.", color = p.sub, fontSize = 12.sp)
                 }
-                Text(":", style = num(40.sp), color = p.ink, modifier = Modifier.padding(bottom = 18.dp))
+                Text(":", style = num(28.sp, FontWeight.SemiBold), color = p.ink, modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 18.dp))
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    NumberWheel(60, s, { s = it })
+                    NumberWheel(60, s, { s = it }, width = 70.dp, big = 34.sp, itemHeight = 46.dp)
                     Text("Sek.", color = p.sub, fontSize = 12.sp)
                 }
             }
@@ -766,7 +914,7 @@ private fun RunningTimer() {
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(TimerStore.label, color = p.sub, fontSize = 15.sp)
-                Text(hms(secLeft, secLeft >= 3600), style = num(if (secLeft >= 3600) 50.sp else 62.sp), color = p.ink)
+                Text(hms(secLeft, secLeft >= 3600), style = num(if (secLeft >= 3600) 50.sp else 62.sp, FontWeight.SemiBold), color = p.ink)
                 if (TimerStore.paused) Text("Pausiert", color = p.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }

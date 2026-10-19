@@ -146,9 +146,8 @@ class RingService : Service() {
             }
         }
 
-        val uri = RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+        val chosen = if (kind == KIND_ALARM) store.alarms.firstOrNull { it.id == alarmId }?.sound.orEmpty() else ""
+        val uri = AlarmSounds.resolve(this, chosen)
         volume = if (store.rampVolume) 0.15f else 1f
         runCatching {
             player = MediaPlayer().apply {
@@ -165,7 +164,24 @@ class RingService : Service() {
                 start()
             }
         }.onFailure {
-            runCatching { RingtoneManager.getRingtone(this, uri)?.play() }
+            runCatching { player?.release() }
+            player = null
+            val def = AlarmSounds.resolve(this, "")
+            runCatching {
+                player = MediaPlayer().apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+                    )
+                    setDataSource(this@RingService, def)
+                    isLooping = true
+                    setVolume(volume, volume)
+                    prepare()
+                    start()
+                }
+            }.onFailure { runCatching { RingtoneManager.getRingtone(this, def)?.play() } }
         }
         if (store.rampVolume) handler.postDelayed(rampRunnable, 2000)
 

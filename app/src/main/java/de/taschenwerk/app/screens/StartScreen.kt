@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -123,6 +124,10 @@ fun StartScreen(nav: Nav) {
                     },
                     style = num(50.sp), color = p.ink
                 )
+                Text(
+                    "Ich liebe Ellen ♥", color = p.accent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
             }
             CircleButton(Ic.more, { nav.overlay = Overlay.Settings }, size = 44.dp, bg = p.bg, desc = "Einstellungen")
         }
@@ -148,10 +153,17 @@ fun StartScreen(nav: Nav) {
                         color = p.sub, fontSize = 13.sp, maxLines = 1
                     )
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(if (w != null) "${w.temp.roundToInt()}°" else "–", style = num(32.sp), color = p.ink)
+                Spacer(Modifier.width(8.dp))
+                Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(IntrinsicSize.Max)) {
+                    Text(
+                        if (w != null) "${w.temp.roundToInt()}°" else "–", style = num(32.sp, FontWeight.SemiBold), color = p.ink,
+                        maxLines = 1, softWrap = false
+                    )
                     if (w != null && !w.dew.isNaN()) {
-                        Text("Taupunkt ${w.dew.roundToInt()}°", color = p.sub, fontSize = 13.sp)
+                        Text(
+                            "Taupunkt ${w.dew.roundToInt()}°", color = p.sub, fontSize = 11.sp,
+                            maxLines = 1, softWrap = false
+                        )
                     }
                 }
             }
@@ -292,22 +304,7 @@ fun CurrencyCard(store: Store) {
         CurrencyRow(from, shownA, { from = it; store.applyMainCur(it) }) {
             aText = it; editedTop = true
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) { Divider() }
-            CircleButton(
-                Ic.swap,
-                {
-                    val f = from
-                    from = to
-                    to = f
-                    store.applyMainCur(from)
-                    store.applySecondCur(to)
-                },
-                size = 36.dp, iconSize = 18.dp, fg = p.accent,
-                modifier = Modifier.padding(horizontal = 10.dp), desc = "Währungen tauschen"
-            )
-            Box(Modifier.weight(1f)) { Divider() }
-        }
+        Divider()
         CurrencyRow(to, shownB, { to = it; store.applySecondCur(it) }, accent = true) {
             bText = it; editedTop = false
         }

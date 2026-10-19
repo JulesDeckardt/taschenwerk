@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +58,7 @@ import de.taschenwerk.app.ui.Divider
 import de.taschenwerk.app.ui.Ic
 import de.taschenwerk.app.ui.LocalPal
 import de.taschenwerk.app.ui.PillButton
+import de.taschenwerk.app.ui.Segmented
 import de.taschenwerk.app.ui.SmallButton
 import de.taschenwerk.app.ui.StepperBox
 import de.taschenwerk.app.ui.Toggle
@@ -64,10 +66,13 @@ import de.taschenwerk.app.ui.TwIcon
 import de.taschenwerk.app.ui.clickableNoRipple
 import de.taschenwerk.app.ui.num
 import de.taschenwerk.app.util.Beep
+import de.taschenwerk.app.util.Chime
+import de.taschenwerk.app.util.Voice
 import de.taschenwerk.app.util.hms
 import de.taschenwerk.app.util.two
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 @Composable
@@ -85,6 +90,7 @@ fun WorkoutEditScreen(nav: Nav, id: String?) {
         }
     }
     var announce by remember { mutableStateOf(store.getBool("announce", true)) }
+    var voiceLang by remember { mutableStateOf(store.getString("voiceLang") ?: "auto") }
     val wid = remember { existing?.id ?: ("w" + System.currentTimeMillis()) }
 
     fun build() = Workout(wid, name.ifBlank { "Workout" }, rounds, prep, steps.toList())
@@ -212,6 +218,24 @@ fun WorkoutEditScreen(nav: Nav, id: String?) {
                     Text("Nächste Übung ansagen", color = p.ink, fontSize = 15.sp, modifier = Modifier.weight(1f))
                     Toggle(announce) { announce = it; store.putBool("announce", it) }
                 }
+                if (announce) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Sprache der Stimme", color = p.sub, fontSize = 12.sp)
+                    Spacer(Modifier.height(6.dp))
+                    val modes = listOf("auto", "de", "en")
+                    Segmented(
+                        listOf("Automatisch", "Deutsch", "Englisch"),
+                        modes.indexOf(voiceLang).coerceAtLeast(0),
+                        { voiceLang = modes[it]; store.putString("voiceLang", modes[it]) }
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (voiceLang == "auto") "Englische Übungsnamen wie Crunches oder Squats werden englisch gesprochen."
+                        else if (voiceLang == "en") "Alle Ansagen auf Englisch." else "Alle Ansagen auf Deutsch.",
+                        color = p.sub, fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(4.dp))
+                }
             }
             Spacer(Modifier.height(4.dp))
             PillButton("Start", Ic.play, true, Modifier.fillMaxWidth()) {
@@ -253,7 +277,9 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
         return
     }
     val segs = remember(w) { segments(w) }
-    val announce = remember { store.getBool("announce", true) }
+    var announce by remember { mutableStateOf(store.getBool("announce", true)) }
+    val voiceMode = remember { store.getString("voiceLang") ?: "auto" }
+    val scope = rememberCoroutineScope()
 
     var idx by remember { mutableIntStateOf(0) }
     var segEnd by remember { mutableLongStateOf(0L) }
@@ -265,41 +291,80 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
     val view = LocalView.current
     DisposableEffect(Unit) {
         view.keepScreenOn = true
+        Chime.warmBell()
         onDispose { view.keepScreenOn = false }
     }
     val tts = remember { arrayOfNulls<TextToSpeech>(1) }
+    val enOk = remember { booleanArrayOf(false) }
     DisposableEffect(Unit) {
         var t: TextToSpeech? = null
-        t = TextToSpeech(ctx) { st -> if (st == TextToSpeech.SUCCESS) runCatching { t?.setLanguage(Locale.GERMAN) } }
+        t = TextToSpeech(ctx) { st ->
+            if (st == TextToSpeech.SUCCESS) runCatching {
+                val r = t?.isLanguageAvailable(Locale.US) ?: TextToSpeech.LANG_NOT_SUPPORTED
+                enOk[0] = r >= TextToSpeech.LANG_AVAILABLE
+                t?.setLanguage(Locale.GERMAN)
+            }
+        }
         tts[0] = t
         onDispose {
             runCatching { t?.stop(); t?.shutdown() }
         }
     }
 
-    fun speak(s: String) {
-        if (announce) runCatching { tts[0]?.speak(s, TextToSpeech.QUEUE_FLUSH, null, "tw") }
+    val english = voiceMode == "en"
+    fun nameLocale(n: String): Locale = when (voiceMode) {
+        "en" -> Locale.US
+        "de" -> Locale.GERMAN
+        else -> if (Voice.isEnglish(n)) Locale.US else Locale.GERMAN
     }
 
+    /** Spricht mehrere Teile nacheinander, jeden in seiner Sprache. */
+    fun say(vararg parts: Pair<String, Locale>) {
+        if (!announce) return
+        val t = tts[0] ?: return
+        runCatching {
+            parts.filter { it.first.isNotBlank() }.forEachIndexed { i, (txt, loc) ->
+                val l = if (loc == Locale.US && !enOk[0]) Locale.GERMAN else loc
+                t.setLanguage(l)
+                t.speak(txt, if (i == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, "tw$i")
+            }
+        }
+    }
+    val lang = if (english) Locale.US else Locale.GERMAN
+
     fun go(i: Int) {
+        val prev = if (!finished && i == idx + 1) segs.getOrNull(idx) else null
+        val bell = prev?.kind == Kind.WORK
+        if (bell) Chime.bell()
+        val wait = if (bell) 1100L else 0L
         if (i >= segs.size) {
             finished = true
-            Beep.long()
-            speak("Geschafft")
+            if (!bell) Beep.long()
+            scope.launch {
+                delay(wait)
+                say((if (english) "Well done" else "Geschafft") to lang)
+            }
             return
         }
         idx = i.coerceAtLeast(0)
         val s = segs[idx]
         segEnd = SystemClock.elapsedRealtime() + s.sec * 1000L
         paused = false
-        Beep.long()
-        when (s.kind) {
-            Kind.WORK -> speak(s.name)
-            Kind.PAUSE -> {
-                val next = segs.drop(idx + 1).firstOrNull { it.kind == Kind.WORK }
-                speak(if (next != null) "Pause. Danach ${next.name}" else "Pause")
+        if (!bell) Beep.long()
+        scope.launch {
+            delay(wait)
+            when (s.kind) {
+                Kind.WORK -> say(s.name to nameLocale(s.name))
+                Kind.PAUSE -> {
+                    val next = segs.drop(idx + 1).firstOrNull { it.kind == Kind.WORK }
+                    if (next != null) say((if (english) "Rest. Next up" else "Pause. Danach") to lang, next.name to nameLocale(next.name))
+                    else say((if (english) "Rest" else "Pause") to lang)
+                }
+                Kind.PREP -> {
+                    val first = segs.firstOrNull { it.kind == Kind.WORK }?.name ?: ""
+                    say((if (english) "Get ready. First up" else "Gleich geht's los. Zuerst") to lang, first to nameLocale(first))
+                }
             }
-            Kind.PREP -> speak("Gleich geht's los. Zuerst ${segs.firstOrNull { it.kind == Kind.WORK }?.name ?: ""}")
         }
     }
 
@@ -363,7 +428,17 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
             Text(w.name, color = p.ink, fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = Modifier
                 .weight(1f)
                 .padding(start = 4.dp))
-            Text("Runde ${s.round} / ${w.rounds}", color = p.sub, fontSize = 15.sp, modifier = Modifier.padding(end = 8.dp))
+            Text("Runde ${s.round} / ${w.rounds}", color = p.sub, fontSize = 15.sp, modifier = Modifier.padding(end = 4.dp))
+            CircleButton(
+                if (announce) Ic.speaker else Ic.speakerOff,
+                {
+                    announce = !announce
+                    store.putBool("announce", announce)
+                    if (!announce) runCatching { tts[0]?.stop() }
+                },
+                size = 44.dp, bg = if (announce) p.fill else p.track, fg = if (announce) p.onFill else p.sub, iconSize = 20.dp,
+                desc = if (announce) "Stimme aus" else "Stimme an"
+            )
         }
         Column(
             Modifier
@@ -398,7 +473,7 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
                     append("${two((secLeft / 60).toInt())}:")
                     withStyle(SpanStyle(color = p.accent)) { append(two((secLeft % 60).toInt())) }
                 },
-                style = num(108.sp), color = p.ink
+                style = num(108.sp, FontWeight.SemiBold), color = p.ink
             )
             Spacer(Modifier.height(14.dp))
 
