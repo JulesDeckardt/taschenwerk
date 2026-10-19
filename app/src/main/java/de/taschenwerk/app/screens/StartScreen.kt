@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -56,6 +57,7 @@ import de.taschenwerk.app.data.WeatherRepo
 import de.taschenwerk.app.data.currencyName
 import de.taschenwerk.app.data.weatherIcon
 import de.taschenwerk.app.data.weatherText
+import de.taschenwerk.app.data.sunHours
 import de.taschenwerk.app.ui.Card
 import de.taschenwerk.app.ui.CircleButton
 import de.taschenwerk.app.ui.Divider
@@ -152,26 +154,35 @@ fun StartScreen(nav: Nav) {
                         color = p.sub, fontSize = 14.sp, maxLines = 1
                     )
                     if (w != null) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            TwIcon(Ic.sun, size = 14.dp, tint = p.accent)
-                            Text(
-                                "${fmt(w.sunH, 1)} Std.", color = p.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(start = 4.dp), maxLines = 1
-                            )
-                            if (!w.dew.isNaN()) {
+                        SunDewLine(
+                            sun = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    TwIcon(Ic.sun, size = 14.dp, tint = p.accent)
+                                    Text(
+                                        "${sunHours(w.sunH)} Std.", color = p.accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(start = 4.dp), maxLines = 1, softWrap = false
+                                    )
+                                }
+                            },
+                            sep = {
                                 Box(
                                     Modifier
-                                        .padding(horizontal = 10.dp)
+                                        .padding(horizontal = 9.dp)
                                         .size(width = 1.dp, height = 12.dp)
                                         .background(p.line)
                                 )
-                                TwIcon(Ic.droplet, size = 13.dp, tint = p.sub)
-                                Text(
-                                    "Taupunkt ${w.dew.roundToInt()}°", color = p.sub, fontSize = 14.sp,
-                                    modifier = Modifier.padding(start = 4.dp), maxLines = 1
-                                )
+                            },
+                            dew = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    TwIcon(Ic.droplet, size = 13.dp, tint = p.fill)
+                                    Text(
+                                        if (w.dew.isNaN()) "Taupunkt –" else "Taupunkt ${w.dew.roundToInt()}°",
+                                        color = p.sub, fontSize = 13.sp,
+                                        modifier = Modifier.padding(start = 4.dp), maxLines = 1, softWrap = false
+                                    )
+                                }
                             }
-                        }
+                        )
                     }
                 }
                 Spacer(Modifier.width(8.dp))
@@ -245,6 +256,31 @@ fun StartScreen(nav: Nav) {
             QuickTile("Stoppuhr", Ic.stopwatch, Modifier.weight(1f)) { nav.go(Tab.UHR, 2) }
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** Sonnenstunden | Taupunkt in einer Zeile; passt es nicht, rutscht der Taupunkt in eine eigene Zeile. */
+@Composable
+private fun SunDewLine(sun: @Composable () -> Unit, sep: @Composable () -> Unit, dew: @Composable () -> Unit) {
+    Layout(contents = listOf(sun, sep, dew)) { (sunM, sepM, dewM), c ->
+        val loose = c.copy(minWidth = 0, minHeight = 0)
+        val a = sunM.first().measure(loose)
+        val s = sepM.first().measure(loose)
+        val d = dewM.first().measure(loose)
+        if (a.width + s.width + d.width <= c.maxWidth) {
+            val h = maxOf(a.height, s.height, d.height)
+            layout(a.width + s.width + d.width, h) {
+                a.place(0, (h - a.height) / 2)
+                s.place(a.width, (h - s.height) / 2)
+                d.place(a.width + s.width, (h - d.height) / 2)
+            }
+        } else {
+            val gap = 2.dp.roundToPx()
+            layout(maxOf(a.width, d.width).coerceAtMost(c.maxWidth), a.height + gap + d.height) {
+                a.place(0, 0)
+                d.place(0, a.height + gap)
+            }
+        }
     }
 }
 
@@ -344,14 +380,15 @@ private fun CurrencyRow(code: String, value: String, onPick: (String) -> Unit, a
         Box {
             Row(
                 Modifier
-                    .height(40.dp)
+                    .size(width = 84.dp, height = 40.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(p.track)
-                    .clickable { open = true }
-                    .padding(start = 12.dp, end = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .clickable { open = true },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
-                Text(code, color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text(code, color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Spacer(Modifier.width(2.dp))
                 TwIcon(Ic.chevDown, size = 16.dp)
             }
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {

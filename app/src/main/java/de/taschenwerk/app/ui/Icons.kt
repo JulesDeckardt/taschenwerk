@@ -108,6 +108,32 @@ object Ic {
             "M8.5 20h9a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.3 1.2A2.9 2.9 0 0 0 8.5 20z"
         )
     }
+    /** Überwiegend sonnig: große Sonne, kleine Wolke unten rechts. */
+    val sunCloudSmall by lazy {
+        stroke(
+            "sunCloudSmall", c(10f, 9.5f, 4f),
+            "M10 2.3v1.4M2.8 9.5h1.4M4.9 4.4l1 1M15.1 4.4l-1 1M4.9 14.6l1-1M17.2 9.5h-1",
+            "M14.8 20.5h4.7a2.4 2.4 0 0 0 0-4.8 3.4 3.4 0 0 0-6.4 1A1.9 1.9 0 0 0 14.8 20.5z"
+        )
+    }
+
+    /** Stark bewölkt: große Wolke, nur ein Rand der Sonne schaut hervor. */
+    val cloudSunMost by lazy {
+        stroke(
+            "cloudSunMost", "M5.2 10.6a3.6 3.6 0 0 1 6.3-3.4",
+            "M8.4 2.6v1.3M3 5.4l.9.9M2.3 9.6h1.3",
+            "M7 20.5h10.5a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.4 1.4A3.3 3.3 0 0 0 7 20.5z"
+        )
+    }
+
+    /** Nacht, teils bewölkt: Mond mit Wolke. */
+    val moonCloud by lazy {
+        stroke(
+            "moonCloud", "M11.5 8.6A4.2 4.2 0 0 1 6 3a4.6 4.6 0 1 0 5.5 5.6z",
+            "M8.5 20h9a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.3 1.2A2.9 2.9 0 0 0 8.5 20z"
+        )
+    }
+
     val droplet by lazy { stroke("droplet", "M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z", w = 2f) }
     val wind by lazy { stroke("wind", "M3 9h11a3 3 0 1 0-3-3M3 15h15a3 3 0 1 1-3 3", w = 2f) }
     val thermo by lazy { stroke("thermo", "M10 14.5V5a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z", w = 2f) }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -64,6 +66,8 @@ import de.taschenwerk.app.data.Place
 import de.taschenwerk.app.data.Store
 import de.taschenwerk.app.data.WeatherRepo
 import de.taschenwerk.app.data.weatherIcon
+import de.taschenwerk.app.data.dayLook
+import de.taschenwerk.app.data.sunHours
 import de.taschenwerk.app.data.weatherText
 import de.taschenwerk.app.ui.Card
 import de.taschenwerk.app.ui.CircleButton
@@ -154,7 +158,7 @@ fun WeatherScreen() {
                 ) {
                     TwIcon(Ic.sun, size = 16.dp, tint = p.accent)
                     Text(
-                        "${fmt(w.sunH, 1)} Sonnenstunden heute", color = p.ink, fontSize = 14.sp,
+                        "${sunHours(w.sunH)} Sonnenstunden heute", color = p.ink, fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 6.dp)
                     )
                 }
@@ -166,9 +170,11 @@ fun WeatherScreen() {
             }
             Card(padding = PaddingValues(horizontal = 6.dp, vertical = 12.dp)) {
                 Row(Modifier.fillMaxWidth()) {
-                    Forecast("Jetzt", weatherIcon(w.code, w.day), weatherTint(w.code, w.day), w.temp, null, Modifier.weight(1f), strongLabel = true)
-                    w.hours.take(4).forEach { h ->
-                        Forecast(h.label, weatherIcon(h.code, h.day), weatherTint(h.code, h.day), h.temp, null, Modifier.weight(1f))
+                    w.hours.forEach { h ->
+                        Forecast(
+                            h.label, weatherIcon(h.code, h.day), weatherTint(h.code, h.day), h.temp, null,
+                            Modifier.weight(1f), strongLabel = !h.past, sub = h.time, faded = h.past
+                        )
                     }
                 }
             }
@@ -176,8 +182,9 @@ fun WeatherScreen() {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 w.days.take(5).forEachIndexed { i, d ->
                     val tinted = i % 2 == 1
+                    val (dIcon, dTint) = dayLook(d)
                     Forecast(
-                        d.label, weatherIcon(d.code), weatherTint(d.code, true), d.max, d.min,
+                        d.label, dIcon, weatherTint(dTint, true), d.max, d.min,
                         Modifier
                             .weight(1f)
                             .tile(tinted, 22.dp),
@@ -288,19 +295,28 @@ private fun centeredDeg(v: Double) = buildAnnotatedString {
 @Composable
 private fun Forecast(
     label: String, icon: ImageVector, tint: Color, temp: Double, low: Double?, modifier: Modifier,
-    strongLabel: Boolean = false, padV: androidx.compose.ui.unit.Dp = 4.dp
+    strongLabel: Boolean = false, padV: androidx.compose.ui.unit.Dp = 4.dp,
+    sub: String? = null, faded: Boolean = false
 ) {
     val p = LocalPal.current
     Column(
-        modifier.padding(vertical = padV),
+        modifier
+            .padding(vertical = padV)
+            .alpha(if (faded) 0.4f else 1f),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            label, color = if (strongLabel) p.ink else p.sub, fontSize = 13.sp,
-            fontWeight = if (strongLabel) FontWeight.SemiBold else FontWeight.Medium,
-            maxLines = 1, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
-        )
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                label, color = if (strongLabel) p.ink else p.sub, fontSize = 13.sp,
+                fontWeight = if (strongLabel) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+            )
+            if (sub != null) Text(
+                sub, color = p.sub, fontSize = 11.sp, maxLines = 1, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { TwIcon(icon, size = 24.dp, tint = tint) }
         Text(
             centeredDeg(temp), style = num(16.sp, FontWeight.SemiBold), color = p.ink,
@@ -498,16 +514,16 @@ fun AltitudeScreen() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Höhenunterschied", color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Text(if (base.isNaN()) "Nullpunkt setzen zum Messen" else "seit Nullpunkt $baseTime", color = p.sub, fontSize = 13.sp)
+                    Text(if (base.isNaN()) "Nullpunkt tippen zum Messen" else "seit Nullpunkt $baseTime", color = p.sub, fontSize = 13.sp)
                 }
-                Text(
-                    diff?.let { (if (it >= 0) "+" else "") + fmt(it, 0) + " m" } ?: "–",
-                    style = num(30.sp), color = p.accent
+                if (diff != null) Text(
+                    (if (diff >= 0) "+" else "") + fmt(diff, 0) + " m",
+                    style = num(30.sp, FontWeight.SemiBold), color = p.accent
                 )
             }
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SmallButton("Nullpunkt setzen", Modifier.weight(1f)) {
+            Spacer(Modifier.height(14.dp))
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                SmallButton("Nullpunkt", Modifier.width(160.dp)) {
                     if (current != null) {
                         base = current
                         baseTime = java.time.LocalTime.now().withSecond(0).withNano(0).toString()
@@ -515,13 +531,8 @@ fun AltitudeScreen() {
                         store.putString("altBaseTime", baseTime)
                     }
                 }
-                SmallButton("Kalibrieren", Modifier.weight(1f)) { refreshKey++ }
             }
         }
-        Text(
-            "Barometer = Luftdruck, mit aktuellem Luftdruck auf Meereshöhe kalibriert. Karte = Geländehöhe am Standort.",
-            color = p.muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 4.dp)
-        )
         Spacer(Modifier.height(10.dp))
     }
 }

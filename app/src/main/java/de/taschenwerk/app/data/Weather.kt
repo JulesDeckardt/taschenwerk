@@ -13,8 +13,11 @@ import java.time.LocalDateTime
 import java.time.format.TextStyle
 import java.util.Locale
 
-data class HourW(val label: String, val temp: Double, val code: Int, val day: Boolean)
-data class DayW(val label: String, val max: Double, val min: Double, val code: Int, val sunH: Double)
+data class HourW(val label: String, val time: String, val temp: Double, val code: Int, val day: Boolean, val past: Boolean)
+data class DayW(
+    val label: String, val max: Double, val min: Double, val code: Int, val sunH: Double,
+    val dayLenH: Double = 12.0, val precip: Double = 0.0
+)
 
 data class WeatherData(
     val name: String,
@@ -52,8 +55,9 @@ fun weatherText(code: Int): String = when (code) {
 }
 
 fun weatherIcon(code: Int, day: Boolean = true): ImageVector = when (code) {
-    0, 1 -> if (day) Ic.sun else Ic.moon
-    2 -> if (day) Ic.cloudSun else Ic.cloud
+    0 -> if (day) Ic.sun else Ic.moon
+    1 -> if (day) Ic.sunCloudSmall else Ic.moon
+    2 -> if (day) Ic.cloudSun else Ic.moonCloud
     3 -> Ic.cloud
     45, 48 -> Ic.fog
     in 51..67, 80, 81, 82 -> Ic.rain
@@ -61,6 +65,28 @@ fun weatherIcon(code: Int, day: Boolean = true): ImageVector = when (code) {
     95, 96, 99 -> Ic.storm
     else -> Ic.cloud
 }
+
+private fun isPrecip(code: Int) = code in 51..67 || code in 71..77 || code in 80..86 || code in 95..99
+
+/**
+ * Symbol für einen ganzen Tag: richtet sich nach dem Anteil der Sonnenstunden am Tageslicht.
+ * Niederschlag nur, wenn wirklich nennenswert etwas fällt. Liefert (Symbol, Code für die Farbe).
+ */
+fun dayLook(d: DayW): Pair<ImageVector, Int> {
+    if (isPrecip(d.code) && d.precip >= 1.0) return weatherIcon(d.code) to d.code
+    val r = if (d.dayLenH > 0) d.sunH / d.dayLenH else 0.0
+    return when {
+        r >= 0.75 -> Ic.sun to 0
+        r >= 0.5 -> Ic.sunCloudSmall to 1
+        r >= 0.3 -> Ic.cloudSun to 2
+        r >= 0.12 -> Ic.cloudSunMost to 2
+        d.code == 45 || d.code == 48 -> Ic.fog to 45
+        else -> Ic.cloud to 3
+    }
+}
+
+/** Sonnenstunden als ganze Zahl: ab ,6 aufrunden, bis einschließlich ,5 abrunden. */
+fun sunHours(h: Double): Int = if (h.isNaN()) 0 else kotlin.math.ceil(h - 0.5).toInt().coerceAtLeast(0)
 
 object WeatherRepo {
     var home by mutableStateOf<WeatherData?>(null)
@@ -77,37 +103,59 @@ object WeatherRepo {
         val url = "https://api.open-meteo.com/v1/forecast?latitude=${f(lat)}&longitude=${f(lon)}" +
             "&current=temperature_2m,relative_humidity_2m,apparent_temperature,dew_point_2m,weather_code,wind_speed_10m,is_day,pressure_msl" +
             "&hourly=temperature_2m,weather_code,is_day" +
-            "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunshine_duration" +
-            "&timezone=auto&forecast_days=7"
+            "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunshine_duration,daylight_duration,precipitation_sum" +
+            "&timezone=auto&past_days=1&forecast_days=7"
         val j = Net.getJson(url)
         val cur = j.getJSONObject("current")
         val curTime = cur.getString("time")
+        val now = LocalDateTime.parse(curTime)
         val hourly = j.getJSONObject("hourly")
         val hTimes = hourly.getJSONArray("time")
         val hTemp = hourly.getJSONArray("temperature_2m")
         val hCode = hourly.getJSONArray("weather_code")
         val hDay = hourly.getJSONArray("is_day")
-        val curHour = curTime.take(13)
-        var start = 0
-        for (k in 0 until hTimes.length()) {
-            if (hTimes.getString(k).take(13) >= curHour) { start = k; break }
-        }
+        val hIndex = HashMap<String, Int>()
+        for (k in 0 until hTimes.length()) hIndex[hTimes.getString(k).take(13)] = k
+
+        // Tagesverlauf: feste Tageszeiten; der „Tag“ läuft bis 3 Uhr nachts.
+        val base = if (now.hour < 3) now.toLocalDate().minusDays(1) else now.toLocalDate()
+        val slots = listOf(
+            Triple("Morgens", base, 7), Triple("Mittags", base, 12), Triple("Nachm.", base, 16),
+            Triple("Abends", base, 20), Triple("Nachts", base.plusDays(1), 3)
+        )
         val hours = ArrayList<HourW>()
-        for (k in start + 1 until minOf(start + 6, hTimes.length())) {
-            val t = LocalDateTime.parse(hTimes.getString(k))
-            hours.add(HourW("${t.hour} Uhr", hTemp.getDouble(k), hCode.getInt(k), hDay.getInt(k) == 1))
+        for ((label, date, hour) in slots) {
+            val t = date.atTime(hour, 0)
+            val k = hIndex[t.toString().take(13)] ?: continue
+            hours.add(
+                HourW(
+                    label, "$hour Uhr", hTemp.getDouble(k), hCode.getInt(k), hDay.getInt(k) == 1,
+                    past = t.plusMinutes(59).isBefore(now)
+                )
+            )
         }
+
         val daily = j.getJSONObject("daily")
         val dTimes = daily.getJSONArray("time")
         val dCode = daily.getJSONArray("weather_code")
         val dMax = daily.getJSONArray("temperature_2m_max")
         val dMin = daily.getJSONArray("temperature_2m_min")
         val dSun = daily.getJSONArray("sunshine_duration")
+        val dLen = daily.optJSONArray("daylight_duration")
+        val dPre = daily.optJSONArray("precipitation_sum")
+        val todayStr = now.toLocalDate().toString()
+        var ti = 0
+        for (k in 0 until dTimes.length()) if (dTimes.getString(k) == todayStr) { ti = k; break }
         val days = ArrayList<DayW>()
-        for (k in 1 until minOf(6, dTimes.length())) {
+        for (k in ti + 1 until minOf(ti + 6, dTimes.length())) {
             val d = LocalDate.parse(dTimes.getString(k))
             val label = d.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.GERMAN).replace(".", "")
-            days.add(DayW(label, dMax.getDouble(k), dMin.getDouble(k), dCode.getInt(k), dSun.optDouble(k, 0.0) / 3600.0))
+            days.add(
+                DayW(
+                    label, dMax.getDouble(k), dMin.getDouble(k), dCode.getInt(k), dSun.optDouble(k, 0.0) / 3600.0,
+                    (dLen?.optDouble(k, 43200.0) ?: 43200.0) / 3600.0, dPre?.optDouble(k, 0.0) ?: 0.0
+                )
+            )
         }
         return WeatherData(
             name = name,
@@ -118,9 +166,9 @@ object WeatherRepo {
             wind = cur.optDouble("wind_speed_10m", Double.NaN),
             code = cur.optInt("weather_code", 0),
             day = cur.optInt("is_day", 1) == 1,
-            high = dMax.getDouble(0),
-            low = dMin.getDouble(0),
-            sunH = dSun.optDouble(0, 0.0) / 3600.0,
+            high = dMax.getDouble(ti),
+            low = dMin.getDouble(ti),
+            sunH = dSun.optDouble(ti, 0.0) / 3600.0,
             pressureMsl = cur.optDouble("pressure_msl", Double.NaN),
             hours = hours,
             days = days,

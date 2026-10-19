@@ -165,6 +165,29 @@ object Chime {
 
     fun bell(vol: Double = 0.75) = out(bellSamples(vol))
 
+    /** Ausklang am Ende einer Atemübung: tiefer, weicher Akkord, langsam gebrochen. */
+    fun closing(vol: Double = 0.5) {
+        thread(isDaemon = true) {
+            val buf = cache.getOrPut("closing$vol") {
+                val notes = doubleArrayOf(146.83, 220.0, 293.66, 369.99)
+                val gap = 0.55
+                val noteDur = 8.0
+                val n = (SR * (gap * (notes.size - 1) + noteDur)).toInt()
+                val mix = DoubleArray(n)
+                notes.forEachIndexed { i, f ->
+                    val one = pianoSamples(f, 1.0, noteDur)
+                    val off = (i * gap * SR).toInt()
+                    val g = doubleArrayOf(1.0, 0.75, 0.6, 0.45)[i]
+                    for (k in one.indices) if (off + k < n) mix[off + k] += one[k] / 32767.0 * g
+                }
+                var peak = 0.0
+                mix.forEach { if (abs(it) > peak) peak = abs(it) }
+                ShortArray(n) { (mix[it] / peak * vol * 32767).toInt().coerceIn(-32767, 32767).toShort() }
+            }
+            out(buf)
+        }
+    }
+
     /** Vorab berechnen, damit der erste Ton ohne Verzögerung kommt. */
     fun warm(vararg freqs: Double) {
         thread(isDaemon = true) { freqs.forEach { pianoSamples(it, 0.6, 7.0); pianoSamples(it, 0.17, 7.0) } }
