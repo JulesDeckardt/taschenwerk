@@ -184,11 +184,11 @@ fun WeatherScreen() {
                     val tinted = i % 2 == 1
                     val (dIcon, dTint) = dayLook(d)
                     Forecast(
-                        d.label, dIcon, weatherTint(dTint, true), d.max, d.min, sunH = d.sunH,
+                        d.label, dIcon, weatherTint(dTint, true), d.max, d.min,
                         Modifier
                             .weight(1f)
                             .tile(tinted, 22.dp),
-                        strongLabel = true, padV = 14.dp
+                        strongLabel = true, padV = 14.dp, sunH = d.sunH
                     )
                 }
             }
