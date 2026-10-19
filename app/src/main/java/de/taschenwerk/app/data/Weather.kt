@@ -146,12 +146,13 @@ fun dayLook(d: DayW): Pair<ImageVector, Int> {
 }
 
 /**
- * Wirksame Bewölkung in %: tiefe und mittlere Wolken voll, hohe (dünne Schleier-)Wolken nur halb.
+ * Wirksame Bewölkung in %: tiefe Wolken voll, mittlere zu 80 %, hohe (dünne Schleier-)Wolken nur zu 20 % –
+ * durch Schleierwolken scheint die Sonne praktisch ungehindert.
  * Ebenen überlagern sich zufällig. Fehlen die Ebenen, wird die Gesamtbewölkung genommen.
  */
 fun effCloud(low: Double, mid: Double, high: Double, total: Double): Double {
     if (low.isNaN() || mid.isNaN() || high.isNaN()) return total
-    val clear = (1 - low / 100.0) * (1 - mid / 100.0) * (1 - 0.5 * high / 100.0)
+    val clear = (1 - low / 100.0) * (1 - 0.8 * mid / 100.0) * (1 - 0.2 * high / 100.0)
     return ((1 - clear) * 100.0).coerceIn(0.0, 100.0)
 }
 
