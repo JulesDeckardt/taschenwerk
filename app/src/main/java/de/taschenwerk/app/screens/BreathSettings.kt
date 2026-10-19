@@ -129,18 +129,18 @@ fun BreathScreen() {
         store.putLong("brPause", pause.toLong())
     }
 
-    // Weiche Klaviertöne: Einatmen G3, Ausatmen D3, Halten/Pause dieselbe Taste ganz leise.
+    // Weiche Klaviertöne: Einatmen G3, Ausatmen D3, Luft anhalten D4 (heller, harmonisch dazu).
     fun phases() = listOf(
         Phase("in", "Einatmen", inh, 1f, 196.0),
-        Phase("hold", "Halten", hold, 1f, -196.0),
+        Phase("hold", "Halten", hold, 1f, 293.66),
         Phase("out", "Ausatmen", exh, SMALL, 146.83),
-        Phase("pause", "Pause", pause, SMALL, -146.83)
+        Phase("pause", "Halten", pause, SMALL, 293.66)
     ).filter { it.sec > 0 }
 
     val customs = remember { mutableStateListOf<Tech>().apply { addAll(loadCustom(store)) } }
     var editCustom by remember { mutableStateOf<Tech?>(null) }
     var newCustom by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { Chime.warm(196.0, 146.83) }
+    LaunchedEffect(Unit) { Chime.warm(196.0, 146.83, 293.66) }
 
     val view = LocalView.current
     DisposableEffect(running) {
@@ -165,7 +165,7 @@ fun BreathScreen() {
                 if (c == cycles && ph.key == "pause") break
                 label = ph.label
                 if (sound) {
-                    if (ph.freq > 0) Chime.piano(ph.freq, 0.6) else Chime.piano(-ph.freq, 0.17)
+                    Chime.piano(ph.freq, if (ph.key == "hold" || ph.key == "pause") 0.42 else 0.6)
                 }
                 val anim = launch { scale.animateTo(ph.to, tween(ph.sec * 1000, easing = Ease)) }
                 delay(ph.sec * 1000L)

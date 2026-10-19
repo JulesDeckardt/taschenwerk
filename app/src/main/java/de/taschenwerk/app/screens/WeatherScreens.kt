@@ -184,7 +184,7 @@ fun WeatherScreen() {
                     val tinted = i % 2 == 1
                     val (dIcon, dTint) = dayLook(d)
                     Forecast(
-                        d.label, dIcon, weatherTint(dTint, true), d.max, d.min,
+                        d.label, dIcon, weatherTint(dTint, true), d.max, d.min, sunH = d.sunH,
                         Modifier
                             .weight(1f)
                             .tile(tinted, 22.dp),
@@ -296,7 +296,7 @@ private fun centeredDeg(v: Double) = buildAnnotatedString {
 private fun Forecast(
     label: String, icon: ImageVector, tint: Color, temp: Double, low: Double?, modifier: Modifier,
     strongLabel: Boolean = false, padV: androidx.compose.ui.unit.Dp = 4.dp,
-    sub: String? = null, faded: Boolean = false
+    sub: String? = null, faded: Boolean = false, sunH: Double? = null
 ) {
     val p = LocalPal.current
     Column(
@@ -326,6 +326,19 @@ private fun Forecast(
             centeredDeg(low), style = num(13.sp, FontWeight.Normal), color = p.sub,
             maxLines = 1, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
         )
+        if (sunH != null) {
+            Row(
+                Modifier.padding(top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                TwIcon(Ic.sun, size = 12.dp, tint = p.accent)
+                Text(
+                    "${sunHours(sunH)} h", style = num(12.sp, FontWeight.SemiBold), color = p.accent,
+                    maxLines = 1, modifier = Modifier.padding(start = 3.dp)
+                )
+            }
+        }
     }
 }
 
