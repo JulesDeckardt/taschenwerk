@@ -204,7 +204,8 @@ fun WorkoutEditScreen(nav: Nav, id: String?) {
                         CircleButton(Ic.plus, { steps[i] = st.copy(sec = (st.sec + 5).coerceAtMost(600)) }, size = 34.dp, bg = p.track, iconSize = 16.dp, desc = "länger")
                         Spacer(Modifier.width(4.dp))
                         TwIcon(Ic.close, tint = p.sub, size = 18.dp, modifier = Modifier.clickableNoRipple {
-                            if (steps.size > 1) steps.removeAt(i)
+                            // mindestens eine Übung muss bleiben
+                            if (steps.size > 1 && (st.pause || steps.count { !it.pause } > 1)) steps.removeAt(i)
                         })
                     }
                 }
@@ -250,6 +251,17 @@ fun WorkoutEditScreen(nav: Nav, id: String?) {
     if (showGuide) GuideDialog(build()) { showGuide = false }
 }
 
+/** Spricht mehrere Teile nacheinander, jeden in seiner Sprache. */
+private fun speakParts(t: TextToSpeech, parts: List<Pair<String, Locale>>, enOk: Boolean) {
+    runCatching {
+        parts.filter { it.first.isNotBlank() }.forEachIndexed { i, (txt, loc) ->
+            val l = if (loc == Locale.US && !enOk) Locale.GERMAN else loc
+            t.setLanguage(l)
+            t.speak(txt, if (i == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, "tw$i")
+        }
+    }
+}
+
 private enum class Kind { PREP, WORK, PAUSE }
 
 private data class Seg(val name: String, val sec: Int, val kind: Kind, val round: Int, val exIdx: Int, val exCount: Int, val stepIdx: Int)
@@ -280,6 +292,10 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
         return
     }
     val segs = remember(w) { segments(w) }
+    if (segs.isEmpty()) {
+        LaunchedEffect(Unit) { nav.overlay = null }
+        return
+    }
     var announce by remember { mutableStateOf(store.getBool("announce", true)) }
     var showGuide by remember { mutableStateOf(false) }
     val voiceMode = remember { store.getString("voiceLang") ?: "auto" }
@@ -300,6 +316,8 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
     }
     val tts = remember { arrayOfNulls<TextToSpeech>(1) }
     val enOk = remember { booleanArrayOf(false) }
+    val ttsReady = remember { booleanArrayOf(false) }
+    val pending = remember { arrayOfNulls<List<Pair<String, Locale>>>(1) }
     DisposableEffect(Unit) {
         var t: TextToSpeech? = null
         t = TextToSpeech(ctx) { st ->
@@ -307,6 +325,12 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
                 val r = t?.isLanguageAvailable(Locale.US) ?: TextToSpeech.LANG_NOT_SUPPORTED
                 enOk[0] = r >= TextToSpeech.LANG_AVAILABLE
                 t?.setLanguage(Locale.GERMAN)
+                ttsReady[0] = true
+                // Ansage, die vor dem Start der Sprachausgabe kam, jetzt nachholen.
+                val p = pending[0]
+                pending[0] = null
+                val tt = t
+                if (p != null && tt != null) speakParts(tt, p, enOk[0])
             }
         }
         tts[0] = t
@@ -325,14 +349,12 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
     /** Spricht mehrere Teile nacheinander, jeden in seiner Sprache. */
     fun say(vararg parts: Pair<String, Locale>) {
         if (!announce) return
-        val t = tts[0] ?: return
-        runCatching {
-            parts.filter { it.first.isNotBlank() }.forEachIndexed { i, (txt, loc) ->
-                val l = if (loc == Locale.US && !enOk[0]) Locale.GERMAN else loc
-                t.setLanguage(l)
-                t.speak(txt, if (i == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, "tw$i")
-            }
+        val t = tts[0]
+        if (t == null || !ttsReady[0]) {
+            pending[0] = parts.toList()
+            return
         }
+        speakParts(t, parts.toList(), enOk[0])
     }
     val lang = if (english) Locale.US else Locale.GERMAN
 

@@ -388,9 +388,7 @@ private fun AddPlaceDialog(store: Store, onClose: () -> Unit) {
                                     if (store.places.none { it.name == pl.name }) {
                                         store.places.add(pl)
                                         store.savePlaces()
-                                        scope.launch {
-                                            runCatching { WeatherRepo.others[pl.name] = WeatherRepo.fetch(pl.lat, pl.lon, pl.name) }
-                                        }
+                                        WeatherRepo.refreshPlace(pl)
                                     }
                                     onClose()
                                 }
@@ -450,6 +448,8 @@ fun AltitudeScreen() {
         gpsBusy = true
         gps = Loc.gps(ctx) ?: gps
         gpsBusy = false
+        // Geländehöhe genau für die GPS-Position nachladen
+        gps?.let { g -> WeatherRepo.elevation(g.latitude, g.longitude)?.let { terrain = it } }
     }
 
     val msl = WeatherRepo.home?.pressureMsl?.takeIf { !it.isNaN() }

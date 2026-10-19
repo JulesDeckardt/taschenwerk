@@ -7,6 +7,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import de.taschenwerk.app.ui.Ic
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.net.URLEncoder
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -177,10 +183,27 @@ object WeatherRepo {
     }
 
     /** Standort bestimmen (falls erlaubt) und Wetter für Heimatort und alle Orte laden. */
+    // Läuft unabhängig vom Bildschirm weiter, damit ein Tab-Wechsel das Laden nicht abbricht.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var job: Job? = null
+
     suspend fun refreshAll(ctx: Context, store: Store, force: Boolean = false) {
         val h = home
         if (!force && h != null && System.currentTimeMillis() - h.fetched < 15 * 60_000L) return
-        if (loading) return
+        val running = job?.takeIf { it.isActive }
+        if (running != null) { running.join(); return }
+        val app = ctx.applicationContext
+        val j = scope.launch { doRefresh(app, store) }
+        job = j
+        j.join()
+    }
+
+    /** Einen einzelnen Ort laden (z. B. direkt nach dem Hinzufügen). */
+    fun refreshPlace(p: Place) {
+        scope.launch { runCatching { others[p.name] = fetch(p.lat, p.lon, p.name) } }
+    }
+
+    private suspend fun doRefresh(ctx: Context, store: Store) {
         loading = true
         error = null
         try {
@@ -201,6 +224,8 @@ object WeatherRepo {
             for (p in store.places.toList()) {
                 runCatching { others[p.name] = fetch(p.lat, p.lon, p.name) }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             error = "Wetter konnte nicht geladen werden"
         } finally {

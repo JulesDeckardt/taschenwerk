@@ -318,8 +318,9 @@ fun daysText(days: Int): String = when (days) {
 fun untilText(a: de.taschenwerk.app.data.Alarm): String {
     val next = AlarmScheduler.nextTrigger(a)
     val d = Duration.between(ZonedDateTime.now(), next)
-    val h = d.toHours()
-    val m = d.toMinutes() % 60
+    val totalMin = d.toMinutes() + if (d.seconds % 60 > 0) 1 else 0
+    val h = totalMin / 60
+    val m = totalMin % 60
     return if (h >= 24) "in ${h / 24} T. ${h % 24} Std." else "in $h Std. $m Min."
 }
 
@@ -333,8 +334,8 @@ fun alarmSubtitle(a: de.taschenwerk.app.data.Alarm): String {
 fun CurrencyCard(store: Store) {
     val p = LocalPal.current
     LaunchedEffect(Unit) { Rates.refresh(store) }
-    var from by remember { mutableStateOf(store.mainCur) }
-    var to by remember { mutableStateOf(store.secondCur) }
+    val from = store.mainCur
+    val to = store.secondCur
     var aText by remember { mutableStateOf("1.000") }
     var bText by remember { mutableStateOf("") }
     var editedTop by remember { mutableStateOf(true) }
@@ -358,11 +359,11 @@ fun CurrencyCard(store: Store) {
                 color = p.sub, fontSize = 12.sp
             )
         }
-        CurrencyRow(from, shownA, { from = it; store.applyMainCur(it) }) {
+        CurrencyRow(from, shownA, { store.applyMainCur(it) }) {
             aText = it; editedTop = true
         }
         Divider()
-        CurrencyRow(to, shownB, { to = it; store.applySecondCur(it) }, accent = true) {
+        CurrencyRow(to, shownB, { store.applySecondCur(it) }, accent = true) {
             bText = it; editedTop = false
         }
     }

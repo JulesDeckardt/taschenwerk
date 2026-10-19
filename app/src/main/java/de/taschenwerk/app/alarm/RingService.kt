@@ -24,6 +24,10 @@ import androidx.core.content.ContextCompat
 import de.taschenwerk.app.R
 import de.taschenwerk.app.data.Store
 import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 /** Klingelt im Vordergrund: Alarm-Ton (Wecker-Lautstärke), Vibration, Vollbild-Benachrichtigung. */
 class RingService : Service() {
@@ -38,12 +42,15 @@ class RingService : Service() {
         private const val NOTIF_ID = 7
 
         val active = MutableStateFlow(false)
-        var title: String = ""
+        var title by mutableStateOf("")
             private set
-        var subtitle: String = ""
+        var subtitle by mutableStateOf("")
             private set
-        var kind: Int = KIND_ALARM
+        var kind by mutableIntStateOf(KIND_ALARM)
             private set
+
+        /** Notfall-Ton, falls der Dienst nicht starten darf. */
+        private var fallback: android.media.Ringtone? = null
         var alarmId: Int = -1
             private set
 
@@ -54,7 +61,24 @@ class RingService : Service() {
                 .putExtra("id", id)
                 .putExtra("title", title)
                 .putExtra("sub", sub)
-            ContextCompat.startForegroundService(ctx, i)
+            try {
+                ContextCompat.startForegroundService(ctx, i)
+            } catch (e: Exception) {
+                // Android verweigert den Start (z. B. ohne Erlaubnis für exakte Wecker):
+                // dann wenigstens den Weckton direkt abspielen.
+                runCatching {
+                    fallback?.stop()
+                    fallback = RingtoneManager.getRingtone(ctx, AlarmSounds.resolve(ctx, ""))?.apply {
+                        audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
+                        play()
+                    }
+                }
+            }
+        }
+
+        fun stopFallback() {
+            runCatching { fallback?.stop() }
+            fallback = null
         }
 
         fun command(ctx: Context, action: String) {
@@ -64,6 +88,7 @@ class RingService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var player: MediaPlayer? = null
+    private var lastResort: android.media.Ringtone? = null
     private var vibrator: Vibrator? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var volume = 0.15f
@@ -181,7 +206,14 @@ class RingService : Service() {
                     prepare()
                     start()
                 }
-            }.onFailure { runCatching { RingtoneManager.getRingtone(this, def)?.play() } }
+            }.onFailure {
+                runCatching {
+                    lastResort = RingtoneManager.getRingtone(this, def)?.apply {
+                        audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
+                        play()
+                    }
+                }
+            }
         }
         if (store.rampVolume) handler.postDelayed(rampRunnable, 2000)
 
@@ -215,6 +247,9 @@ class RingService : Service() {
         runCatching { player?.stop() }
         runCatching { player?.release() }
         player = null
+        runCatching { lastResort?.stop() }
+        lastResort = null
+        stopFallback()
         runCatching { vibrator?.cancel() }
         runCatching { if (wakeLock?.isHeld == true) wakeLock?.release() }
         wakeLock = null

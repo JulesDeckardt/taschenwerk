@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -114,6 +115,17 @@ fun TaschenwerkApp() {
             if (Build.VERSION.SDK_INT >= 33 && !store.getBool("askedNotif", false)) {
                 store.putBool("askedNotif", true)
                 notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
+        // Klingelt gerade etwas (z. B. ohne Benachrichtigungs-Erlaubnis), Stopp-Bildschirm zeigen.
+        val ringing by de.taschenwerk.app.alarm.RingService.active.collectAsState()
+        LaunchedEffect(ringing) {
+            if (ringing) runCatching {
+                ctx.startActivity(
+                    android.content.Intent(ctx, de.taschenwerk.app.alarm.RingActivity::class.java)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
             }
         }
 

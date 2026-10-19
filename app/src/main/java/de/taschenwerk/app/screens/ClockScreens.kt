@@ -595,13 +595,20 @@ object Stopwatch {
         acc = s.getLong("swAcc")
         laps.clear()
         s.getString("swLaps")?.split(';')?.mapNotNull { it.toLongOrNull() }?.let { laps.addAll(it) }
-        // Nach einem Neustart ist elapsedRealtime kleiner – dann anhalten.
-        if (running && startAt > SystemClock.elapsedRealtime()) { running = false; startAt = 0L }
+        // Startzeit über die Uhrzeit neu berechnen (übersteht auch einen Neustart).
+        val wall = s.getLong("swWall")
+        if (running && wall > 0L) {
+            val since = (System.currentTimeMillis() - wall).coerceAtLeast(0L)
+            startAt = SystemClock.elapsedRealtime() - since
+        } else if (running && startAt > SystemClock.elapsedRealtime()) {
+            running = false; startAt = 0L
+        }
     }
 
     private fun save(s: Store) {
         s.putBool("swRun", running)
         s.putLong("swStart", startAt)
+        s.putLong("swWall", if (running) System.currentTimeMillis() - (SystemClock.elapsedRealtime() - startAt) else 0L)
         s.putLong("swAcc", acc)
         s.putString("swLaps", laps.joinToString(";"))
     }

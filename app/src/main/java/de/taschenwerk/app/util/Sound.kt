@@ -190,7 +190,7 @@ object Chime {
 
     /** Vorab berechnen, damit der erste Ton ohne Verzögerung kommt. */
     fun warm(vararg freqs: Double) {
-        thread(isDaemon = true) { freqs.forEach { pianoSamples(it, 0.6, 7.0); pianoSamples(it, 0.17, 7.0) } }
+        thread(isDaemon = true) { freqs.forEach { pianoSamples(it, 0.6, 7.0); pianoSamples(it, 0.42, 7.0) } }
     }
 
     fun warmBell() {

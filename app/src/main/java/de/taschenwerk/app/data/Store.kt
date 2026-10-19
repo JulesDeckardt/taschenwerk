@@ -32,7 +32,12 @@ data class Workout(
     val prep: Int,
     val steps: List<Step>
 ) {
-    val totalSec: Int get() = prep + rounds * steps.sumOf { it.sec }
+    /** Gesamtdauer wie tatsächlich gelaufen: Pausen am Ende der letzten Runde entfallen. */
+    val totalSec: Int get() {
+        if (steps.none { !it.pause }) return 0
+        val trailing = steps.reversed().takeWhile { it.pause }.sumOf { it.sec }
+        return prep + rounds * steps.sumOf { it.sec } - trailing
+    }
 }
 
 data class TimerPreset(val name: String, val sec: Int)
@@ -41,7 +46,17 @@ data class Place(val name: String, val lat: Double, val lon: Double)
 
 /** Zentraler Speicher für Einstellungen und Listen (SharedPreferences, beobachtbar für Compose). */
 class Store private constructor(ctx: Context) {
-    private val sp: SharedPreferences = ctx.getSharedPreferences("taschenwerk", Context.MODE_PRIVATE)
+    // Gerätegeschützter Speicher: Wecker funktionieren auch nach einem Neustart vor dem Entsperren.
+    private val sp: SharedPreferences = run {
+        val dctx = ctx.createDeviceProtectedStorageContext()
+        val meta = dctx.getSharedPreferences("tw_meta", Context.MODE_PRIVATE)
+        val um = ctx.getSystemService(Context.USER_SERVICE) as android.os.UserManager
+        if (!meta.getBoolean("migDp", false) && um.isUserUnlocked) {
+            val moved = runCatching { dctx.moveSharedPreferencesFrom(ctx, "taschenwerk") }.getOrDefault(false)
+            if (moved) meta.edit().putBoolean("migDp", true).commit()
+        }
+        dctx.getSharedPreferences("taschenwerk", Context.MODE_PRIVATE)
+    }
 
     var scheme by mutableStateOf(runCatching { Scheme.valueOf(sp.getString("scheme", "GELB")!!) }.getOrDefault(Scheme.GELB))
         private set

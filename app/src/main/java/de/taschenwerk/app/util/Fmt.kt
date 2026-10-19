@@ -50,7 +50,8 @@ fun parseNum(s: String): Double? {
     val norm = if (t.contains(',')) t.replace(".", "").replace(',', '.') else {
         // Nur Punkte: wenn mehrere oder genau 3 Ziffern danach -> Tausendertrenner
         val parts = t.split('.')
-        if (parts.size > 2 || (parts.size == 2 && parts[1].length == 3 && parts[0].length in 1..3)) t.replace(".", "") else t
+        val intPart = parts[0].trimStart('-')
+        if (parts.size > 2 || (parts.size == 2 && parts[1].length == 3 && intPart.length in 1..3 && intPart != "0")) t.replace(".", "") else t
     }
     return norm.toDoubleOrNull()
 }
