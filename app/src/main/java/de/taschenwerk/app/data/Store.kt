@@ -70,13 +70,13 @@ class Store private constructor(ctx: Context) {
         loadPresets()
     }
 
-    fun setScheme(s: Scheme) { scheme = s; sp.edit().putString("scheme", s.name).apply() }
-    fun setDarkMode(m: Int) { darkMode = m; sp.edit().putInt("darkMode", m).apply() }
-    fun setMainCur(c: String) { mainCur = c; sp.edit().putString("mainCur", c).apply() }
-    fun setSecondCur(c: String) { secondCur = c; sp.edit().putString("secondCur", c).apply() }
+    fun applyScheme(s: Scheme) { scheme = s; sp.edit().putString("scheme", s.name).apply() }
+    fun applyDarkMode(m: Int) { darkMode = m; sp.edit().putInt("darkMode", m).apply() }
+    fun applyMainCur(c: String) { mainCur = c; sp.edit().putString("mainCur", c).apply() }
+    fun applySecondCur(c: String) { secondCur = c; sp.edit().putString("secondCur", c).apply() }
     fun setSnooze(m: Int) { snoozeMin = m; sp.edit().putInt("snoozeMin", m).apply() }
     fun setRamp(b: Boolean) { rampVolume = b; sp.edit().putBoolean("rampVolume", b).apply() }
-    fun setVibrate(b: Boolean) { vibrate = b; sp.edit().putBoolean("vibrate", b).apply() }
+    fun applyVibrate(b: Boolean) { vibrate = b; sp.edit().putBoolean("vibrate", b).apply() }
 
     fun getString(key: String): String? = sp.getString(key, null)
     fun putString(key: String, value: String?) { sp.edit().putString(key, value).apply() }

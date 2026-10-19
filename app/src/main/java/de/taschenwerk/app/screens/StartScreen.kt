@@ -289,7 +289,7 @@ fun CurrencyCard(store: Store) {
                 color = p.sub, fontSize = 12.sp
             )
         }
-        CurrencyRow(from, shownA, { from = it; store.setMainCur(it) }) {
+        CurrencyRow(from, shownA, { from = it; store.applyMainCur(it) }) {
             aText = it; editedTop = true
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -300,15 +300,15 @@ fun CurrencyCard(store: Store) {
                     val f = from
                     from = to
                     to = f
-                    store.setMainCur(from)
-                    store.setSecondCur(to)
+                    store.applyMainCur(from)
+                    store.applySecondCur(to)
                 },
                 size = 36.dp, iconSize = 18.dp, fg = p.accent,
                 modifier = Modifier.padding(horizontal = 10.dp), desc = "Währungen tauschen"
             )
             Box(Modifier.weight(1f)) { Divider() }
         }
-        CurrencyRow(to, shownB, { to = it; store.setSecondCur(it) }, accent = true) {
+        CurrencyRow(to, shownB, { to = it; store.applySecondCur(it) }, accent = true) {
             bText = it; editedTop = false
         }
     }

@@ -270,7 +270,7 @@ fun SettingsScreen(nav: Nav) {
                         Column(
                             Modifier
                                 .weight(1f)
-                                .clickable { store.setScheme(s) },
+                                .clickable { store.applyScheme(s) },
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             var m = Modifier
@@ -305,7 +305,7 @@ fun SettingsScreen(nav: Nav) {
                         else -> 2
                     }
                     Segmented(listOf("Hell", "Dunkel", "System"), idx, { i ->
-                        store.setDarkMode(
+                        store.applyDarkMode(
                             when (i) {
                                 0 -> 1
                                 1 -> 2
@@ -318,9 +318,9 @@ fun SettingsScreen(nav: Nav) {
 
             Label("Währung")
             Card(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
-                CurrencyPick("Hauptwährung", store.mainCur) { store.setMainCur(it) }
+                CurrencyPick("Hauptwährung", store.mainCur) { store.applyMainCur(it) }
                 Divider()
-                CurrencyPick("Zweitwährung", store.secondCur) { store.setSecondCur(it) }
+                CurrencyPick("Zweitwährung", store.secondCur) { store.applySecondCur(it) }
             }
 
             Label("Wecker & Timer")
@@ -332,7 +332,7 @@ fun SettingsScreen(nav: Nav) {
                 Divider()
                 RowItem("Langsam lauter werden", trailing = { Toggle(store.rampVolume) { store.setRamp(it) } })
                 Divider()
-                RowItem("Vibration", trailing = { Toggle(store.vibrate) { store.setVibrate(it) } })
+                RowItem("Vibration", trailing = { Toggle(store.vibrate) { store.applyVibrate(it) } })
             }
 
             Label("Zuverlässigkeit des Weckers")
