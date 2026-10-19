@@ -141,9 +141,18 @@ fun dayLook(d: DayW): Pair<ImageVector, Int> {
         r >= 0.6 -> Ic.sunCloudSmall to 1
         r >= 0.4 -> Ic.cloudSun to 2
         r >= 0.2 -> Ic.cloudSunMost to 2
-        d.code == 45 || d.code == 48 -> Ic.fog to 45
-        else -> Ic.cloud to 3
+        else -> Ic.cloud to 3   // Nebel nie für den ganzen Tag – nur in einzelnen Stunden
     }
+}
+
+/**
+ * Wirksame Bewölkung in %: tiefe und mittlere Wolken voll, hohe (dünne Schleier-)Wolken nur halb.
+ * Ebenen überlagern sich zufällig. Fehlen die Ebenen, wird die Gesamtbewölkung genommen.
+ */
+fun effCloud(low: Double, mid: Double, high: Double, total: Double): Double {
+    if (low.isNaN() || mid.isNaN() || high.isNaN()) return total
+    val clear = (1 - low / 100.0) * (1 - mid / 100.0) * (1 - 0.5 * high / 100.0)
+    return ((1 - clear) * 100.0).coerceIn(0.0, 100.0)
 }
 
 /** Sonnenstunden als ganze Zahl: ab ,6 aufrunden, bis einschließlich ,5 abrunden. */
@@ -162,8 +171,8 @@ object WeatherRepo {
 
     suspend fun fetch(lat: Double, lon: Double, name: String): WeatherData {
         val url = "https://api.open-meteo.com/v1/forecast?latitude=${f(lat)}&longitude=${f(lon)}" +
-            "&current=temperature_2m,relative_humidity_2m,apparent_temperature,dew_point_2m,weather_code,wind_speed_10m,is_day,pressure_msl,cloud_cover,precipitation" +
-            "&hourly=temperature_2m,weather_code,is_day,cloud_cover,precipitation" +
+            "&current=temperature_2m,relative_humidity_2m,apparent_temperature,dew_point_2m,weather_code,wind_speed_10m,is_day,pressure_msl,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation" +
+            "&hourly=temperature_2m,weather_code,is_day,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation" +
             "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunshine_duration,daylight_duration,precipitation_sum,precipitation_probability_max" +
             "&timezone=auto&past_days=1&forecast_days=7"
         val j = Net.getJson(url)
@@ -175,7 +184,19 @@ object WeatherRepo {
         val hTemp = hourly.getJSONArray("temperature_2m")
         val hCode = hourly.getJSONArray("weather_code")
         val hDay = hourly.getJSONArray("is_day")
-        val hCloud = hourly.optJSONArray("cloud_cover")
+        val hCloudTot = hourly.optJSONArray("cloud_cover")
+        val hLow = hourly.optJSONArray("cloud_cover_low")
+        val hMid = hourly.optJSONArray("cloud_cover_mid")
+        val hHigh = hourly.optJSONArray("cloud_cover_high")
+        // Wirksame Bewölkung je Stunde (hohe Schleierwolken zählen nur halb)
+        val hCloud = org.json.JSONArray().apply {
+            for (k in 0 until hTimes.length()) put(
+                effCloud(
+                    hLow?.optDouble(k, Double.NaN) ?: Double.NaN, hMid?.optDouble(k, Double.NaN) ?: Double.NaN,
+                    hHigh?.optDouble(k, Double.NaN) ?: Double.NaN, hCloudTot?.optDouble(k, Double.NaN) ?: Double.NaN
+                ).let { if (it.isNaN()) org.json.JSONObject.NULL else it }
+            )
+        }
         val hPre = hourly.optJSONArray("precipitation")
         val hIndex = HashMap<String, Int>()
         for (k in 0 until hTimes.length()) hIndex[hTimes.getString(k).take(13)] = k
@@ -262,7 +283,11 @@ object WeatherRepo {
             sunH = sunFor(todayStr, dSun.optDouble(ti, 0.0) / 3600.0),
             pressureMsl = cur.optDouble("pressure_msl", Double.NaN),
             look = hourLook(
-                cur.optInt("weather_code", 0), cur.optDouble("cloud_cover", Double.NaN),
+                cur.optInt("weather_code", 0),
+                effCloud(
+                    cur.optDouble("cloud_cover_low", Double.NaN), cur.optDouble("cloud_cover_mid", Double.NaN),
+                    cur.optDouble("cloud_cover_high", Double.NaN), cur.optDouble("cloud_cover", Double.NaN)
+                ),
                 cur.optDouble("precipitation", Double.NaN), cur.optInt("is_day", 1) == 1
             ),
             hours = hours,
