@@ -543,11 +543,12 @@ fun SettingsScreen(nav: Nav) {
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             var m = Modifier
-                                .size(42.dp)
+                                .padding(4.dp)
+                                .size(36.dp)
                                 .clip(CircleShape)
                                 .background(s.swatch)
                             if (sel) m = Modifier
-                                .size(50.dp)
+                                .size(44.dp)
                                 .border(2.dp, p.ink, CircleShape)
                                 .padding(4.dp)
                                 .clip(CircleShape)
@@ -557,8 +558,8 @@ fun SettingsScreen(nav: Nav) {
                             }
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                s.label, color = if (sel) p.ink else p.sub, fontSize = 12.sp,
-                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium
+                                s.label, color = if (sel) p.ink else p.sub, fontSize = 11.sp,
+                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium, maxLines = 1
                             )
                         }
                     }

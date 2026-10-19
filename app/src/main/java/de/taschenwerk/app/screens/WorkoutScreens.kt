@@ -367,7 +367,7 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
                     else say((if (english) "Rest" else "Pause") to lang)
                 }
                 Kind.PREP -> {
-                    val first = segs.firstOrNull { it.kind == Kind.WORK }?.name ?: ""
+                    val first = segs.getOrNull(idx + 1)?.name ?: ""
                     say((if (english) "Get ready. First up" else "Gleich geht's los. Zuerst") to lang, first to nameLocale(first))
                 }
             }
