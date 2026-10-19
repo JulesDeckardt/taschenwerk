@@ -22,7 +22,11 @@ import java.util.Locale
 data class HourW(val label: String, val time: String, val temp: Double, val code: Int, val day: Boolean, val past: Boolean)
 data class DayW(
     val label: String, val max: Double, val min: Double, val code: Int, val sunH: Double,
-    val dayLenH: Double = 12.0, val precip: Double = 0.0
+    val dayLenH: Double = 12.0, val precip: Double = 0.0,
+    /** mittlere Bewölkung tagsüber in % */
+    val cloud: Double = Double.NaN,
+    /** max. Regenwahrscheinlichkeit in % */
+    val precipProb: Double = Double.NaN
 )
 
 data class WeatherData(
@@ -79,13 +83,17 @@ private fun isPrecip(code: Int) = code in 51..67 || code in 71..77 || code in 80
  * Niederschlag nur, wenn wirklich nennenswert etwas fällt. Liefert (Symbol, Code für die Farbe).
  */
 fun dayLook(d: DayW): Pair<ImageVector, Int> {
-    if (isPrecip(d.code) && d.precip >= 1.0) return weatherIcon(d.code) to d.code
-    val r = if (d.dayLenH > 0) d.sunH / d.dayLenH else 0.0
+    // Regen/Gewitter nur, wenn es wirklich wahrscheinlich ist und nennenswert fällt.
+    val rainLikely = d.precipProb.isNaN() || d.precipProb >= 50.0
+    if (isPrecip(d.code) && d.precip >= 2.0 && rainLikely) return weatherIcon(d.code) to d.code
+    // Sonst aus derselben Bewölkung, aus der auch die Sonnenstunden berechnet sind.
+    val r = if (!d.cloud.isNaN()) 1.0 - d.cloud / 100.0
+    else if (d.dayLenH > 0) d.sunH / d.dayLenH else 0.0
     return when {
-        r >= 0.75 -> Ic.sun to 0
-        r >= 0.5 -> Ic.sunCloudSmall to 1
-        r >= 0.3 -> Ic.cloudSun to 2
-        r >= 0.12 -> Ic.cloudSunMost to 2
+        r >= 0.8 -> Ic.sun to 0
+        r >= 0.6 -> Ic.sunCloudSmall to 1
+        r >= 0.4 -> Ic.cloudSun to 2
+        r >= 0.2 -> Ic.cloudSunMost to 2
         d.code == 45 || d.code == 48 -> Ic.fog to 45
         else -> Ic.cloud to 3
     }
@@ -108,8 +116,8 @@ object WeatherRepo {
     suspend fun fetch(lat: Double, lon: Double, name: String): WeatherData {
         val url = "https://api.open-meteo.com/v1/forecast?latitude=${f(lat)}&longitude=${f(lon)}" +
             "&current=temperature_2m,relative_humidity_2m,apparent_temperature,dew_point_2m,weather_code,wind_speed_10m,is_day,pressure_msl" +
-            "&hourly=temperature_2m,weather_code,is_day" +
-            "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunshine_duration,daylight_duration,precipitation_sum" +
+            "&hourly=temperature_2m,weather_code,is_day,cloud_cover" +
+            "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunshine_duration,daylight_duration,precipitation_sum,precipitation_probability_max" +
             "&timezone=auto&past_days=1&forecast_days=7"
         val j = Net.getJson(url)
         val cur = j.getJSONObject("current")
@@ -120,8 +128,29 @@ object WeatherRepo {
         val hTemp = hourly.getJSONArray("temperature_2m")
         val hCode = hourly.getJSONArray("weather_code")
         val hDay = hourly.getJSONArray("is_day")
+        val hCloud = hourly.optJSONArray("cloud_cover")
         val hIndex = HashMap<String, Int>()
         for (k in 0 until hTimes.length()) hIndex[hTimes.getString(k).take(13)] = k
+
+        // Sonnenstunden je Tag aus der stündlichen Bewölkung während des Tageslichts:
+        // jede helle Stunde zählt mit ihrem wolkenfreien Anteil. Das deckt sich mit den Symbolen
+        // und ist zurückhaltender als Open-Meteos Strahlungs-Schätzung.
+        val sunByDate = HashMap<String, Double>()
+        val cloudSum = HashMap<String, Double>()
+        val cloudN = HashMap<String, Int>()
+        if (hCloud != null) {
+            for (k in 0 until hTimes.length()) {
+                if (hDay.optInt(k, 0) != 1) continue
+                val cc = hCloud.optDouble(k, Double.NaN)
+                if (cc.isNaN()) continue
+                val date = hTimes.getString(k).take(10)
+                sunByDate[date] = (sunByDate[date] ?: 0.0) + (1.0 - cc / 100.0).coerceIn(0.0, 1.0)
+                cloudSum[date] = (cloudSum[date] ?: 0.0) + cc
+                cloudN[date] = (cloudN[date] ?: 0) + 1
+            }
+        }
+        fun sunFor(date: String, fallback: Double) = sunByDate[date] ?: fallback
+        fun cloudFor(date: String) = cloudN[date]?.let { n -> (cloudSum[date] ?: 0.0) / n } ?: Double.NaN
 
         // Tagesverlauf: feste Tageszeiten; der „Tag“ läuft bis 3 Uhr nachts.
         val base = if (now.hour < 3) now.toLocalDate().minusDays(1) else now.toLocalDate()
@@ -149,17 +178,21 @@ object WeatherRepo {
         val dSun = daily.getJSONArray("sunshine_duration")
         val dLen = daily.optJSONArray("daylight_duration")
         val dPre = daily.optJSONArray("precipitation_sum")
+        val dProb = daily.optJSONArray("precipitation_probability_max")
         val todayStr = now.toLocalDate().toString()
         var ti = 0
         for (k in 0 until dTimes.length()) if (dTimes.getString(k) == todayStr) { ti = k; break }
         val days = ArrayList<DayW>()
         for (k in ti + 1 until minOf(ti + 6, dTimes.length())) {
-            val d = LocalDate.parse(dTimes.getString(k))
+            val ds = dTimes.getString(k)
+            val d = LocalDate.parse(ds)
             val label = d.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.GERMAN).replace(".", "")
             days.add(
                 DayW(
-                    label, dMax.getDouble(k), dMin.getDouble(k), dCode.getInt(k), dSun.optDouble(k, 0.0) / 3600.0,
-                    (dLen?.optDouble(k, 43200.0) ?: 43200.0) / 3600.0, dPre?.optDouble(k, 0.0) ?: 0.0
+                    label, dMax.getDouble(k), dMin.getDouble(k), dCode.getInt(k),
+                    sunFor(ds, dSun.optDouble(k, 0.0) / 3600.0),
+                    (dLen?.optDouble(k, 43200.0) ?: 43200.0) / 3600.0, dPre?.optDouble(k, 0.0) ?: 0.0,
+                    cloudFor(ds), dProb?.optDouble(k, Double.NaN) ?: Double.NaN
                 )
             )
         }
@@ -174,7 +207,7 @@ object WeatherRepo {
             day = cur.optInt("is_day", 1) == 1,
             high = dMax.getDouble(ti),
             low = dMin.getDouble(ti),
-            sunH = dSun.optDouble(ti, 0.0) / 3600.0,
+            sunH = sunFor(todayStr, dSun.optDouble(ti, 0.0) / 3600.0),
             pressureMsl = cur.optDouble("pressure_msl", Double.NaN),
             hours = hours,
             days = days,
