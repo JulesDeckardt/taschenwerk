@@ -144,9 +144,9 @@ fun WeatherScreen() {
                             },
                             style = num(76.sp, FontWeight.SemiBold), color = p.ink
                         )
-                        Text("${weatherText(w.code)} · H ${deg(w.high)} · T ${deg(w.low)}", color = p.sub, fontSize = 15.sp)
+                        Text("${w.look.text} · H ${deg(w.high)} · T ${deg(w.low)}", color = p.sub, fontSize = 15.sp)
                     }
-                    TwIcon(weatherIcon(w.code, w.day), size = 72.dp, tint = weatherTint(w.code, w.day))
+                    TwIcon(w.look.icon, size = 72.dp, tint = weatherTint(w.look.tint, w.day))
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(
@@ -172,7 +172,7 @@ fun WeatherScreen() {
                 Row(Modifier.fillMaxWidth()) {
                     w.hours.forEach { h ->
                         Forecast(
-                            h.label, weatherIcon(h.code, h.day), weatherTint(h.code, h.day), h.temp, null,
+                            h.label, h.look.icon, weatherTint(h.look.tint, h.day), h.temp, null,
                             Modifier.weight(1f), strongLabel = !h.past, sub = h.time, faded = h.past
                         )
                     }
@@ -188,7 +188,7 @@ fun WeatherScreen() {
                         Modifier
                             .weight(1f)
                             .tile(tinted, 22.dp),
-                        strongLabel = true, padV = 14.dp, sunH = d.sunH
+                        strongLabel = true, padV = 14.dp, sunH = d.sunH, rainProb = d.precipProb
                     )
                 }
             }
@@ -205,11 +205,11 @@ fun WeatherScreen() {
                     Column(Modifier.weight(1f)) {
                         Text(pl.name, color = p.ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         Text(
-                            if (ow != null) "${weatherText(ow.code)} · Taupunkt ${deg(ow.dew)}" else "–",
+                            if (ow != null) "${ow.look.text} · Taupunkt ${deg(ow.dew)}" else "–",
                             color = p.sub, fontSize = 13.sp
                         )
                     }
-                    if (ow != null) TwIcon(weatherIcon(ow.code, ow.day), size = 26.dp, tint = weatherTint(ow.code, ow.day))
+                    if (ow != null) TwIcon(ow.look.icon, size = 26.dp, tint = weatherTint(ow.look.tint, ow.day))
                     Text(
                         if (ow != null) deg(ow.temp) else "–", style = num(30.sp, FontWeight.SemiBold), color = p.ink,
                         textAlign = TextAlign.End,
@@ -296,7 +296,7 @@ private fun centeredDeg(v: Double) = buildAnnotatedString {
 private fun Forecast(
     label: String, icon: ImageVector, tint: Color, temp: Double, low: Double?, modifier: Modifier,
     strongLabel: Boolean = false, padV: androidx.compose.ui.unit.Dp = 4.dp,
-    sub: String? = null, faded: Boolean = false, sunH: Double? = null
+    sub: String? = null, faded: Boolean = false, sunH: Double? = null, rainProb: Double? = null
 ) {
     val p = LocalPal.current
     Column(
@@ -335,6 +335,16 @@ private fun Forecast(
                 TwIcon(Ic.sun, size = 12.dp, tint = p.accent)
                 Text(
                     "${sunHours(sunH)} h", style = num(12.sp, FontWeight.SemiBold), color = p.accent,
+                    maxLines = 1, modifier = Modifier.padding(start = 3.dp)
+                )
+            }
+        }
+        if (rainProb != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                TwIcon(Ic.droplet, size = 11.dp, tint = p.sub)
+                Text(
+                    if (rainProb.isNaN()) "–" else "${rainProb.roundToInt()} %",
+                    style = num(12.sp, FontWeight.Medium), color = p.sub,
                     maxLines = 1, modifier = Modifier.padding(start = 3.dp)
                 )
             }

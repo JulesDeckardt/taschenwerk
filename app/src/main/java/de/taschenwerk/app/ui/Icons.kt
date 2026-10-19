@@ -134,6 +134,26 @@ object Ic {
         )
     }
 
+    /** Schauer: Sonne, daneben Wolke mit Regen. */
+    val showerSun by lazy {
+        stroke(
+            "showerSun", "M4.4 7a2.6 2.6 0 1 0 5.2 0a2.6 2.6 0 1 0 -5.2 0",
+            "M7 1.8v1.3M1.8 7h1.3M3.3 3.3l.9.9M10.7 3.3l-.9.9M3.3 10.7l.9-.9",
+            "M9.5 17.5h8.5a3.3 3.3 0 0 0 0-6.6 4.6 4.6 0 0 0-8.6 1.1A2.8 2.8 0 0 0 9.5 17.5z",
+            "M11.6 19.8l-.8 2.2M14.6 19.8l-.8 2.2M17.6 19.8l-.8 2.2"
+        )
+    }
+
+    /** Gewitter mit Sonne. */
+    val stormSun by lazy {
+        stroke(
+            "stormSun", "M4.4 7a2.6 2.6 0 1 0 5.2 0a2.6 2.6 0 1 0 -5.2 0",
+            "M7 1.8v1.3M1.8 7h1.3M3.3 3.3l.9.9M10.7 3.3l-.9.9M3.3 10.7l.9-.9",
+            "M9.5 17.5h8.5a3.3 3.3 0 0 0 0-6.6 4.6 4.6 0 0 0-8.6 1.1A2.8 2.8 0 0 0 9.5 17.5z",
+            "M14.6 18.6l-1.9 2.9h2.7l-1.7 2.5"
+        )
+    }
+
     val droplet by lazy { stroke("droplet", "M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z", w = 2f) }
     val wind by lazy { stroke("wind", "M3 9h11a3 3 0 1 0-3-3M3 15h15a3 3 0 1 1-3 3", w = 2f) }
     val thermo by lazy { stroke("thermo", "M10 14.5V5a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z", w = 2f) }

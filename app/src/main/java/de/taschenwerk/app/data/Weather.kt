@@ -19,7 +19,13 @@ import java.time.LocalDateTime
 import java.time.format.TextStyle
 import java.util.Locale
 
-data class HourW(val label: String, val time: String, val temp: Double, val code: Int, val day: Boolean, val past: Boolean)
+data class HourW(
+    val label: String, val time: String, val temp: Double, val code: Int, val day: Boolean, val past: Boolean,
+    val look: Look = hourLook(code, Double.NaN, Double.NaN, day)
+)
+
+/** Was angezeigt wird: Symbol, Farbcode (für weatherTint) und Text. */
+data class Look(val icon: ImageVector, val tint: Int, val text: String)
 data class DayW(
     val label: String, val max: Double, val min: Double, val code: Int, val sunH: Double,
     val dayLenH: Double = 12.0, val precip: Double = 0.0,
@@ -42,6 +48,7 @@ data class WeatherData(
     val low: Double,
     val sunH: Double,
     val pressureMsl: Double,
+    val look: Look,
     val hours: List<HourW>,
     val days: List<DayW>,
     val fetched: Long
@@ -79,16 +86,56 @@ fun weatherIcon(code: Int, day: Boolean = true): ImageVector = when (code) {
 private fun isPrecip(code: Int) = code in 51..67 || code in 71..77 || code in 80..86 || code in 95..99
 
 /**
+ * Symbol und Text für einen Zeitpunkt (aktuell oder eine Stunde) – aus der Bewölkung,
+ * Niederschlag nur, wenn wirklich etwas fällt. Gleiche Stufen wie bei den Tagen.
+ */
+fun hourLook(code: Int, cloud: Double, precip: Double, day: Boolean): Look {
+    val storm = code in 95..99
+    val snow = code in 71..77 || code in 85..86
+    val cc = if (!cloud.isNaN()) cloud else when (code) {
+        0 -> 5.0; 1 -> 30.0; 2 -> 50.0; 3 -> 90.0; else -> 70.0
+    }
+    val wet = storm || (isPrecip(code) && (precip.isNaN() || precip >= 0.5))
+    if (wet) {
+        val sunny = day && cc < 60
+        return when {
+            storm -> Look(if (sunny) Ic.stormSun else Ic.storm, 95, "Gewitter")
+            snow -> Look(Ic.snow, 71, "Schnee")
+            sunny -> Look(Ic.showerSun, 80, "Regenschauer")
+            !precip.isNaN() && precip < 1.0 -> Look(Ic.rain, 61, "Leichter Regen")
+            else -> Look(Ic.rain, 61, "Regen")
+        }
+    }
+    if (code == 45 || code == 48) return Look(Ic.fog, 45, "Nebel")
+    return when {
+        cc < 20 -> Look(if (day) Ic.sun else Ic.moon, 0, "Klar")
+        cc < 40 -> Look(if (day) Ic.sunCloudSmall else Ic.moon, 1, if (day) "Überwiegend sonnig" else "Überwiegend klar")
+        cc < 60 -> Look(if (day) Ic.cloudSun else Ic.moonCloud, 2, "Teils bewölkt")
+        cc < 80 -> Look(if (day) Ic.cloudSunMost else Ic.moonCloud, 2, "Überwiegend bewölkt")
+        else -> Look(Ic.cloud, 3, "Bedeckt")
+    }
+}
+
+/**
  * Symbol für einen ganzen Tag: richtet sich nach dem Anteil der Sonnenstunden am Tageslicht.
  * Niederschlag nur, wenn wirklich nennenswert etwas fällt. Liefert (Symbol, Code für die Farbe).
  */
 fun dayLook(d: DayW): Pair<ImageVector, Int> {
     // Regen/Gewitter nur, wenn es wirklich wahrscheinlich ist und nennenswert fällt.
     val rainLikely = d.precipProb.isNaN() || d.precipProb >= 50.0
-    if (isPrecip(d.code) && d.precip >= 2.0 && rainLikely) return weatherIcon(d.code) to d.code
-    // Sonst aus derselben Bewölkung, aus der auch die Sonnenstunden berechnet sind.
+    // Anteil Sonne am Tag – aus derselben Bewölkung, aus der auch die Sonnenstunden berechnet sind.
     val r = if (!d.cloud.isNaN()) 1.0 - d.cloud / 100.0
     else if (d.dayLenH > 0) d.sunH / d.dayLenH else 0.0
+    if (isPrecip(d.code) && d.precip >= 2.0 && rainLikely) {
+        val storm = d.code in 95..99
+        val snow = d.code in 71..77 || d.code in 85..86
+        return when {
+            snow -> Ic.snow to 71
+            r >= 0.4 -> (if (storm) Ic.stormSun else Ic.showerSun) to 80   // sonnig mit Schauer/Gewitter
+            storm -> Ic.storm to 95
+            else -> Ic.rain to 61
+        }
+    }
     return when {
         r >= 0.8 -> Ic.sun to 0
         r >= 0.6 -> Ic.sunCloudSmall to 1
@@ -115,8 +162,8 @@ object WeatherRepo {
 
     suspend fun fetch(lat: Double, lon: Double, name: String): WeatherData {
         val url = "https://api.open-meteo.com/v1/forecast?latitude=${f(lat)}&longitude=${f(lon)}" +
-            "&current=temperature_2m,relative_humidity_2m,apparent_temperature,dew_point_2m,weather_code,wind_speed_10m,is_day,pressure_msl" +
-            "&hourly=temperature_2m,weather_code,is_day,cloud_cover" +
+            "&current=temperature_2m,relative_humidity_2m,apparent_temperature,dew_point_2m,weather_code,wind_speed_10m,is_day,pressure_msl,cloud_cover,precipitation" +
+            "&hourly=temperature_2m,weather_code,is_day,cloud_cover,precipitation" +
             "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunshine_duration,daylight_duration,precipitation_sum,precipitation_probability_max" +
             "&timezone=auto&past_days=1&forecast_days=7"
         val j = Net.getJson(url)
@@ -129,6 +176,7 @@ object WeatherRepo {
         val hCode = hourly.getJSONArray("weather_code")
         val hDay = hourly.getJSONArray("is_day")
         val hCloud = hourly.optJSONArray("cloud_cover")
+        val hPre = hourly.optJSONArray("precipitation")
         val hIndex = HashMap<String, Int>()
         for (k in 0 until hTimes.length()) hIndex[hTimes.getString(k).take(13)] = k
 
@@ -165,7 +213,11 @@ object WeatherRepo {
             hours.add(
                 HourW(
                     label, "$hour Uhr", hTemp.getDouble(k), hCode.getInt(k), hDay.getInt(k) == 1,
-                    past = t.plusMinutes(59).isBefore(now)
+                    past = t.plusMinutes(59).isBefore(now),
+                    look = hourLook(
+                        hCode.getInt(k), hCloud?.optDouble(k, Double.NaN) ?: Double.NaN,
+                        hPre?.optDouble(k, Double.NaN) ?: Double.NaN, hDay.getInt(k) == 1
+                    )
                 )
             )
         }
@@ -209,6 +261,10 @@ object WeatherRepo {
             low = dMin.getDouble(ti),
             sunH = sunFor(todayStr, dSun.optDouble(ti, 0.0) / 3600.0),
             pressureMsl = cur.optDouble("pressure_msl", Double.NaN),
+            look = hourLook(
+                cur.optInt("weather_code", 0), cur.optDouble("cloud_cover", Double.NaN),
+                cur.optDouble("precipitation", Double.NaN), cur.optInt("is_day", 1) == 1
+            ),
             hours = hours,
             days = days,
             fetched = System.currentTimeMillis()

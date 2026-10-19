@@ -138,15 +138,15 @@ fun StartScreen(nav: Nav) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TwIcon(
-                    if (w != null) weatherIcon(w.code, w.day) else Ic.cloudSun, size = 40.dp,
-                    tint = if (w != null) weatherTint(w.code, w.day) else p.fill
+                    if (w != null) w.look.icon else Ic.cloudSun, size = 40.dp,
+                    tint = if (w != null) weatherTint(w.look.tint, w.day) else p.fill
                 )
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(WeatherRepo.homeName, color = p.ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     Text(
                         when {
-                            w != null -> weatherText(w.code)
+                            w != null -> w.look.text
                             WeatherRepo.loading -> "Wird geladen …"
                             !Loc.hasPermission(ctx) -> "Tippen für Standort-Wetter"
                             else -> WeatherRepo.error ?: "–"
