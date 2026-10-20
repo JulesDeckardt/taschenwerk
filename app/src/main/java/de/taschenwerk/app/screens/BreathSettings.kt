@@ -129,18 +129,18 @@ fun BreathScreen() {
         store.putLong("brPause", pause.toLong())
     }
 
-    // Weiche Klaviertöne: Einatmen G3, Ausatmen D3, Luft anhalten D4 (heller, harmonisch dazu).
+    // Weiche Klaviertöne: Einatmen G3, Ausatmen D3, Luft anhalten C4 (etwas heller, leiser und kürzer).
     fun phases() = listOf(
         Phase("in", "Einatmen", inh, 1f, 196.0),
-        Phase("hold", "Halten", hold, 1f, 293.66),
+        Phase("hold", "Halten", hold, 1f, 261.63),
         Phase("out", "Ausatmen", exh, SMALL, 146.83),
-        Phase("pause", "Halten", pause, SMALL, 293.66)
+        Phase("pause", "Halten", pause, SMALL, 261.63)
     ).filter { it.sec > 0 }
 
     val customs = remember { mutableStateListOf<Tech>().apply { addAll(loadCustom(store)) } }
     var editCustom by remember { mutableStateOf<Tech?>(null) }
     var newCustom by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { Chime.warm(196.0, 146.83, 293.66) }
+    LaunchedEffect(Unit) { Chime.warm(196.0, 146.83); Chime.warmPiano(261.63, 0.3, 4.5) }
 
     val view = LocalView.current
     DisposableEffect(running) {
@@ -165,7 +165,8 @@ fun BreathScreen() {
                 if (c == cycles && ph.key == "pause") break
                 label = ph.label
                 if (sound) {
-                    Chime.piano(ph.freq, if (ph.key == "hold" || ph.key == "pause") 0.42 else 0.6)
+                    if (ph.key == "hold" || ph.key == "pause") Chime.piano(ph.freq, 0.3, 4.5)
+                    else Chime.piano(ph.freq, 0.6)
                 }
                 val anim = launch { scale.animateTo(ph.to, tween(ph.sec * 1000, easing = Ease)) }
                 delay(ph.sec * 1000L)

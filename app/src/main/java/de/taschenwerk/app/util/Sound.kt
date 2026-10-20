@@ -193,6 +193,10 @@ object Chime {
         thread(isDaemon = true) { freqs.forEach { pianoSamples(it, 0.6, 7.0); pianoSamples(it, 0.42, 7.0) } }
     }
 
+    fun warmPiano(freq: Double, vol: Double, dur: Double) {
+        thread(isDaemon = true) { pianoSamples(freq, vol, dur) }
+    }
+
     fun warmBell() {
         thread(isDaemon = true) { bellSamples(0.75) }
     }
