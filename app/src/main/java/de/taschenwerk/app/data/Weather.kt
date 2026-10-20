@@ -124,8 +124,8 @@ fun dayLook(d: DayW): Pair<ImageVector, Int> {
     // Regen/Gewitter nur, wenn es wirklich wahrscheinlich ist und nennenswert fällt.
     val rainLikely = d.precipProb.isNaN() || d.precipProb >= 50.0
     // Anteil Sonne am Tag – aus derselben Bewölkung, aus der auch die Sonnenstunden berechnet sind.
-    val r = if (!d.cloud.isNaN()) 1.0 - d.cloud / 100.0
-    else if (d.dayLenH > 0) d.sunH / d.dayLenH else 0.0
+    val r = if (d.dayLenH > 0 && !d.sunH.isNaN()) (d.sunH / d.dayLenH).coerceIn(0.0, 1.0)
+    else if (!d.cloud.isNaN()) 1.0 - d.cloud / 100.0 else 0.0
     if (isPrecip(d.code) && d.precip >= 2.0 && rainLikely) {
         val storm = d.code in 95..99
         val snow = d.code in 71..77 || d.code in 85..86
@@ -156,6 +156,17 @@ fun effCloud(low: Double, mid: Double, high: Double, total: Double): Double {
     return ((1 - clear) * 100.0).coerceIn(0.0, 100.0)
 }
 
+/**
+ * Bewölkung fürs Symbol: Die Modell-Bewölkung ist in Mexiko-Stadt (2240 m) oft viel zu hoch –
+ * „tiefe Wolken“ bei vollem Sonnenschein. Scheint laut Strahlung die Sonne (Anteil f der Stunde),
+ * wird die Bewölkung entsprechend auf höchstens 35 % („überwiegend sonnig“) gedrückt.
+ */
+fun iconCloud(cloud: Double, sunFrac: Double, day: Boolean): Double {
+    if (!day || sunFrac.isNaN() || cloud.isNaN()) return cloud
+    val f = sunFrac.coerceIn(0.0, 1.0)
+    return cloud * (1 - f) + minOf(cloud, 35.0) * f
+}
+
 /** Sonnenstunden als ganze Zahl: ab ,6 aufrunden, bis einschließlich ,5 abrunden. */
 fun sunHours(h: Double): Int = if (h.isNaN()) 0 else kotlin.math.ceil(h - 0.5).toInt().coerceAtLeast(0)
 
@@ -173,7 +184,7 @@ object WeatherRepo {
     suspend fun fetch(lat: Double, lon: Double, name: String): WeatherData {
         val url = "https://api.open-meteo.com/v1/forecast?latitude=${f(lat)}&longitude=${f(lon)}" +
             "&current=temperature_2m,relative_humidity_2m,apparent_temperature,dew_point_2m,weather_code,wind_speed_10m,is_day,pressure_msl,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation" +
-            "&hourly=temperature_2m,weather_code,is_day,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation" +
+            "&hourly=temperature_2m,weather_code,is_day,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,sunshine_duration" +
             "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunshine_duration,daylight_duration,precipitation_sum,precipitation_probability_max" +
             "&timezone=auto&past_days=1&forecast_days=7"
         val j = Net.getJson(url)
@@ -199,25 +210,37 @@ object WeatherRepo {
             )
         }
         val hPre = hourly.optJSONArray("precipitation")
+        // Sonnenschein laut Strahlung (Sekunden je Stunde, gilt für die Stunde *vor* dem Zeitstempel)
+        val hSun = hourly.optJSONArray("sunshine_duration")
+        fun sunFrac(k: Int): Double =
+            if (hSun == null || k < 0 || k >= hSun.length() || hSun.isNull(k)) Double.NaN
+            else (hSun.optDouble(k, Double.NaN) / 3600.0).coerceIn(0.0, 1.0)
         val hIndex = HashMap<String, Int>()
         for (k in 0 until hTimes.length()) hIndex[hTimes.getString(k).take(13)] = k
 
-        // Sonnenstunden je Tag aus der stündlichen Bewölkung während des Tageslichts:
-        // jede helle Stunde zählt mit ihrem wolkenfreien Anteil. Das deckt sich mit den Symbolen
-        // und ist zurückhaltender als Open-Meteos Strahlungs-Schätzung.
+        // Sonnenstunden je Tag: aus der Sonneneinstrahlung (WMO: direkte Strahlung > 120 W/m²).
+        // Die Modell-Bewölkung liegt hier oft daneben (tiefe Wolken bei strahlendem Sonnenschein),
+        // die Strahlung trifft den echten Sonnenschein deutlich besser. Nur wenn sie fehlt: aus der Bewölkung.
         val sunByDate = HashMap<String, Double>()
         val cloudSum = HashMap<String, Double>()
         val cloudN = HashMap<String, Int>()
-        if (hCloud != null) {
-            for (k in 0 until hTimes.length()) {
-                if (hDay.optInt(k, 0) != 1) continue
-                val cc = hCloud.optDouble(k, Double.NaN)
-                if (cc.isNaN()) continue
-                val date = hTimes.getString(k).take(10)
-                sunByDate[date] = (sunByDate[date] ?: 0.0) + (1.0 - cc / 100.0).coerceIn(0.0, 1.0)
-                cloudSum[date] = (cloudSum[date] ?: 0.0) + cc
-                cloudN[date] = (cloudN[date] ?: 0) + 1
+        val hasSun = hSun != null
+        for (k in 0 until hTimes.length()) {
+            val date = hTimes.getString(k).take(10)
+            if (hasSun) {
+                // Wert um 7:00 gilt für 6–7 Uhr → dem Datum der Startstunde zuordnen
+                val f = sunFrac(k)
+                if (!f.isNaN()) {
+                    val d0 = LocalDateTime.parse(hTimes.getString(k)).minusMinutes(30).toLocalDate().toString()
+                    sunByDate[d0] = (sunByDate[d0] ?: 0.0) + f
+                }
             }
+            if (hDay.optInt(k, 0) != 1) continue
+            val cc = iconCloud(hCloud.optDouble(k, Double.NaN), sunFrac(k + 1), true)
+            if (cc.isNaN()) continue
+            if (!hasSun) sunByDate[date] = (sunByDate[date] ?: 0.0) + (1.0 - cc / 100.0).coerceIn(0.0, 1.0)
+            cloudSum[date] = (cloudSum[date] ?: 0.0) + cc
+            cloudN[date] = (cloudN[date] ?: 0) + 1
         }
         fun sunFor(date: String, fallback: Double) = sunByDate[date] ?: fallback
         fun cloudFor(date: String) = cloudN[date]?.let { n -> (cloudSum[date] ?: 0.0) / n } ?: Double.NaN
@@ -237,7 +260,7 @@ object WeatherRepo {
                     label, "$hour Uhr", hTemp.getDouble(k), hCode.getInt(k), hDay.getInt(k) == 1,
                     past = t.plusMinutes(59).isBefore(now),
                     look = hourLook(
-                        hCode.getInt(k), hCloud?.optDouble(k, Double.NaN) ?: Double.NaN,
+                        hCode.getInt(k), iconCloud(hCloud.optDouble(k, Double.NaN), sunFrac(k + 1), hDay.getInt(k) == 1),
                         hPre?.optDouble(k, Double.NaN) ?: Double.NaN, hDay.getInt(k) == 1
                     )
                 )
@@ -285,9 +308,13 @@ object WeatherRepo {
             pressureMsl = cur.optDouble("pressure_msl", Double.NaN),
             look = hourLook(
                 cur.optInt("weather_code", 0),
-                effCloud(
-                    cur.optDouble("cloud_cover_low", Double.NaN), cur.optDouble("cloud_cover_mid", Double.NaN),
-                    cur.optDouble("cloud_cover_high", Double.NaN), cur.optDouble("cloud_cover", Double.NaN)
+                iconCloud(
+                    effCloud(
+                        cur.optDouble("cloud_cover_low", Double.NaN), cur.optDouble("cloud_cover_mid", Double.NaN),
+                        cur.optDouble("cloud_cover_high", Double.NaN), cur.optDouble("cloud_cover", Double.NaN)
+                    ),
+                    hIndex[now.withMinute(0).plusHours(1).toString().take(13)]?.let { sunFrac(it) } ?: Double.NaN,
+                    cur.optInt("is_day", 1) == 1
                 ),
                 cur.optDouble("precipitation", Double.NaN), cur.optInt("is_day", 1) == 1
             ),
