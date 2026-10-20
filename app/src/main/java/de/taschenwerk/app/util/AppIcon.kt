@@ -12,8 +12,8 @@ enum class AppIcon(val alias: String, val label: String, val preview: Int) {
     P("IconP", "P", R.drawable.icon_prev_p),
     NACHT("IconNacht", "Nacht", R.drawable.icon_prev_nacht),
     PASTELL("IconPastell", "Pastell", R.drawable.icon_prev_pastell),
-    SW("IconSw", "Schwarz-Weiß", R.drawable.icon_prev_sw),
-    SWINV("IconSwInv", "Invertiert", R.drawable.icon_prev_swinv);
+    SW("IconSw", "S/W", R.drawable.icon_prev_sw),
+    SWINV("IconSwInv", "S/W inv.", R.drawable.icon_prev_swinv);
 
     fun component(ctx: Context) = ComponentName(ctx.packageName, "de.taschenwerk.app.$alias")
 
