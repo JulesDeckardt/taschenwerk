@@ -94,6 +94,8 @@ val TECHS = listOf(
 private data class Phase(val key: String, val label: String, val sec: Int, val to: Float, val freq: Double)
 
 private const val SMALL = 0.42f
+/** Größe des Balls (ganz eingeatmet) im Verhältnis zum Hof. */
+private const val BALL = 0.84f
 private val Ease = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
 
 @Composable
@@ -229,11 +231,18 @@ fun BreathScreen() {
                 .fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            val d = minOf(maxWidth - 60.dp, maxHeight - 16.dp, 300.dp)
+            val d = minOf(maxWidth - 32.dp, maxHeight - 8.dp, 340.dp)
             Box(Modifier.size(d), contentAlignment = Alignment.Center) {
+                // Sanfte Flächen statt Linien: außen ein heller Hof (ganz eingeatmet),
+                // innen eine leicht abgesetzte Scheibe (ganz ausgeatmet).
+                val halo = p.fill.copy(alpha = if (p.dark) 0.13f else 0.16f)
+                val core = if (p.dark) Color.Black.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.18f)
+                Canvas(Modifier.fillMaxSize()) {
+                    drawCircle(color = halo, radius = size.minDimension / 2)
+                }
                 Box(
                     Modifier
-                        .fillMaxSize()
+                        .fillMaxSize(BALL)
                         .graphicsLayer {
                             scaleX = scale.value
                             scaleY = scale.value
@@ -241,13 +250,8 @@ fun BreathScreen() {
                         .clip(CircleShape)
                         .background(p.fill)
                 )
-                // Zwei zarte, durchgehende Kreise: ganz eingeatmet (außen) und ganz ausgeatmet (innen)
-                val ringCol = p.ink.copy(alpha = if (p.dark) 0.22f else 0.13f)
                 Canvas(Modifier.fillMaxSize()) {
-                    val sw = 1.3.dp.toPx()
-                    val r = size.minDimension / 2
-                    drawCircle(color = ringCol, radius = r - sw / 2, style = Stroke(width = sw))
-                    drawCircle(color = ringCol, radius = r * SMALL, style = Stroke(width = sw))
+                    drawCircle(color = core, radius = size.minDimension / 2 * BALL * SMALL)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(label, color = p.onFill, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
