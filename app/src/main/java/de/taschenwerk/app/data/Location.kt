@@ -77,15 +77,14 @@ object Loc {
         return single(ctx, LocationManager.GPS_PROVIDER, 25_000L)
     }
 
-    /** Ortsname mit Viertel, z. B. „Roma Norte, Ciudad de México“. */
+    /** Nur der Stadtname, z. B. „Ciudad de México“, „Berlin“. */
     suspend fun cityName(ctx: Context, lat: Double, lon: Double): String? = withContext(Dispatchers.IO) {
         runCatching {
             @Suppress("DEPRECATION")
             val list = Geocoder(ctx, Locale.getDefault()).getFromLocation(lat, lon, 5).orEmpty()
             val a = list.firstOrNull() ?: return@runCatching null
             val city = a.locality ?: a.subAdminArea ?: a.adminArea
-            val hood = list.firstNotNullOfOrNull { it.subLocality?.takeIf { s -> s.isNotBlank() && s != city } }
-            listOfNotNull(hood, city).distinct().joinToString(", ").ifBlank { null }
+            city?.takeIf { it.isNotBlank() }
         }.getOrNull()
     }
 }

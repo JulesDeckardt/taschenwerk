@@ -200,11 +200,10 @@ fun StartScreen(nav: Nav) {
             }
         }
 
-        CurrencyCard(store)
-
-        // Wecker
-        Card {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 4.dp)) {
+        // Wecker – oben und am prominentesten
+        Card(padding = PaddingValues(horizontal = 18.dp, vertical = 14.dp)) {
+            val next = store.alarms.filter { it.enabled }.minByOrNull { AlarmScheduler.nextTrigger(it).toEpochSecond() }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 2.dp)) {
                 Text("Wecker", color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 Text(
                     "Alle", color = p.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
@@ -214,22 +213,36 @@ fun StartScreen(nav: Nav) {
                         .padding(4.dp)
                 )
             }
-            val list = store.alarms.take(3)
-            if (list.isEmpty()) {
-                Text("Noch kein Wecker", color = p.sub, fontSize = 14.sp, modifier = Modifier.padding(vertical = 10.dp))
-            }
-            list.forEachIndexed { i, a ->
-                if (i > 0) Divider()
+            // Nächster aktiver Wecker zuerst und groß, danach bis zu zwei weitere kompakt
+            val ordered = (listOfNotNull(next) + store.alarms.filter { it.id != next?.id }).take(3)
+            if (ordered.isEmpty()) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .height(62.dp)
+                        .height(72.dp)
+                        .clickable { nav.overlay = Overlay.EditAlarm(null) },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Noch kein Wecker – tippen zum Anlegen", color = p.sub, fontSize = 15.sp)
+                }
+            }
+            ordered.forEachIndexed { i, a ->
+                if (i > 0) Divider()
+                val big = i == 0
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(if (big) 80.dp else 56.dp)
                         .clickable { nav.overlay = Overlay.EditAlarm(a.id) },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("${two(a.hour)}:${two(a.minute)}", style = num(28.sp), color = if (a.enabled) p.ink else p.muted)
-                        Text(alarmSubtitle(a), color = p.sub, fontSize = 13.sp, maxLines = 1)
+                        Text(
+                            "${two(a.hour)}:${two(a.minute)}",
+                            style = num(if (big) 44.sp else 26.sp, FontWeight.SemiBold),
+                            color = if (a.enabled) p.ink else p.muted
+                        )
+                        Text(alarmSubtitle(a), color = p.sub, fontSize = if (big) 14.sp else 13.sp, maxLines = 1)
                     }
                     Toggle(a.enabled) { on ->
                         val na = a.copy(enabled = on)
@@ -239,6 +252,9 @@ fun StartScreen(nav: Nav) {
                 }
             }
         }
+
+        // Währung – kompakt
+        CurrencyCard(store)
 
         // Schnellzugriff
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -346,9 +362,9 @@ fun CurrencyCard(store: Store) {
     val shownB = if (editedTop) aVal?.let { Rates.convert(it, from, to) }?.let { fmt(it, 2) } ?: "" else bText
     val shownA = if (!editedTop) bVal?.let { Rates.convert(it, to, from) }?.let { fmt(it, 2) } ?: "" else aText
 
-    Card {
+    Card(padding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Währung", color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text("Währung", color = p.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             val one = Rates.convert(1.0, to, from)
             Text(
                 when {
@@ -376,19 +392,19 @@ private fun CurrencyRow(code: String, value: String, onPick: (String) -> Unit, a
     Row(
         Modifier
             .fillMaxWidth()
-            .height(60.dp), verticalAlignment = Alignment.CenterVertically
+            .height(48.dp), verticalAlignment = Alignment.CenterVertically
     ) {
         Box {
             Row(
                 Modifier
-                    .size(width = 84.dp, height = 40.dp)
+                    .size(width = 76.dp, height = 34.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(p.track)
                     .clickable { open = true },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
-                Text(code, color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(code, color = p.ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                 Spacer(Modifier.width(2.dp))
                 TwIcon(Ic.chevDown, size = 16.dp)
             }
@@ -402,7 +418,7 @@ private fun CurrencyRow(code: String, value: String, onPick: (String) -> Unit, a
         NumberField(
             value = value, onChange = onValue,
             modifier = Modifier.weight(1f),
-            style = num(28.sp), align = TextAlign.End, boxed = false,
+            style = num(22.sp, FontWeight.SemiBold), align = TextAlign.End, boxed = false,
             color = if (accent) p.accent else p.ink
         )
     }
