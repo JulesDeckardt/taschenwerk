@@ -2,10 +2,13 @@ name: Probe weather
 on:
   push:
     branches: [probe]
+permissions:
+  contents: write
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
       - run: |
           curl -s "https://api.open-meteo.com/v1/forecast?latitude=19.4194&longitude=-99.1617&hourly=is_day,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,sunshine_duration,direct_radiation,shortwave_radiation,weather_code&daily=sunshine_duration,daylight_duration&timezone=auto&past_days=7&forecast_days=2" > om.json
           python3 - <<'PY'
@@ -17,3 +20,15 @@ jobs:
           for i,t in enumerate(h['time']):
               if h['is_day'][i]==1: print("H",t,h['cloud_cover'][i],h['cloud_cover_low'][i],h['cloud_cover_mid'][i],h['cloud_cover_high'][i],h['sunshine_duration'][i],h['direct_radiation'][i],h['shortwave_radiation'][i],h['weather_code'][i])
           PY
+          python3 - > /tmp/om.txt <<'PY'
+          import json
+          j=json.load(open('om.json'))
+          h=j['hourly']; d=j['daily']
+          print('ELEV', j.get('elevation'))
+          for i,t in enumerate(d['time']): print('DAY',t,round(d['sunshine_duration'][i]/3600,2),round(d['daylight_duration'][i]/3600,2))
+          for i,t in enumerate(h['time']):
+              if h['is_day'][i]==1: print('H',t,h['cloud_cover'][i],h['cloud_cover_low'][i],h['cloud_cover_mid'][i],h['cloud_cover_high'][i],h['sunshine_duration'][i],h['direct_radiation'][i],h['shortwave_radiation'][i],h['weather_code'][i])
+          PY
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git checkout --orphan probe-data; git rm -rf --cached . > /dev/null; git clean -fdxq
+          cp /tmp/om.txt om.txt; git add om.txt; git commit -qm data; git push -f origin probe-data
