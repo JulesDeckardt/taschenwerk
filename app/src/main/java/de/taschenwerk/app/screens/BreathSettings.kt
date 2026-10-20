@@ -554,7 +554,7 @@ fun SettingsScreen(nav: Nav) {
                                 .clip(CircleShape)
                                 .background(s.swatch)
                             Box(m, contentAlignment = Alignment.Center) {
-                                if (sel) TwIcon(Ic.check, tint = androidx.compose.ui.graphics.Color(0xFF161618), size = 18.dp)
+                                if (sel) TwIcon(Ic.check, tint = if (s == Scheme.SW) Color.White else Color(0xFF161618), size = 18.dp)
                             }
                             Spacer(Modifier.height(6.dp))
                             Text(

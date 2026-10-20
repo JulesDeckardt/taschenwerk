@@ -19,7 +19,8 @@ enum class Scheme(val label: String, val swatch: Color) {
     ROSA("Rosa", Color(0xFFEBA88C)),
     SALBEI("Salbei", Color(0xFF9DB596)),
     TUERKIS("Türkis", Color(0xFF7DBDB6)),
-    HELLBLAU("Hellblau", Color(0xFF7DB8E8))
+    HELLBLAU("Hellblau", Color(0xFF7DB8E8)),
+    SW("S/W", Color(0xFF2A2A2D))
 }
 
 data class Palette(
@@ -47,6 +48,7 @@ fun palette(s: Scheme, dark: Boolean): Palette {
             Scheme.SALBEI -> Color(0xFFB3C9AC)
             Scheme.TUERKIS -> Color(0xFF8FD0C9)
             Scheme.HELLBLAU -> Color(0xFF9CCBF2)
+            Scheme.SW -> Color(0xFFEDEDEF)
         }
         val fill = when (s) {
             Scheme.GELB -> Color(0xFFF1D67C)
@@ -55,6 +57,7 @@ fun palette(s: Scheme, dark: Boolean): Palette {
             Scheme.SALBEI -> Color(0xFF9DB596)
             Scheme.TUERKIS -> Color(0xFF7DBDB6)
             Scheme.HELLBLAU -> Color(0xFF7DB8E8)
+            Scheme.SW -> Color(0xFFE6E6E9)
         }
         return Palette(
             bg = Color(0xFF141518), card = Color(0xFF1F2025), cardRing = Color.Transparent,
@@ -99,6 +102,12 @@ fun palette(s: Scheme, dark: Boolean): Palette {
             ink = Color(0xFF161618), sub = Color(0xFF636B74), muted = Color(0xFF8A929B),
             accent = Color(0xFF2E6FA7), fill = Color(0xFF7DB8E8), onFill = Color(0xFF161618),
             line = Color(0xFFDDE4EB), track = Color(0xFFE3E9EF), nav = Color(0xFFF8FAFC), dark = false
+        )
+        Scheme.SW -> Palette(
+            bg = Color(0xFFF3F3F4), card = Color.White, cardRing = Color.Transparent,
+            ink = Color(0xFF161618), sub = Color(0xFF6B6B70), muted = Color(0xFF8E8E93),
+            accent = Color(0xFF161618), fill = Color(0xFF2A2A2D), onFill = Color.White,
+            line = Color(0xFFE4E4E7), track = Color(0xFFE9E9EC), nav = Color(0xFFFAFAFA), dark = false
         )
     }
 }
