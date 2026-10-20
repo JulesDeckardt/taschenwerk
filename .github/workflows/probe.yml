@@ -1,0 +1,19 @@
+name: Probe weather
+on:
+  push:
+    branches: [probe]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -s "https://api.open-meteo.com/v1/forecast?latitude=19.4194&longitude=-99.1617&hourly=is_day,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,sunshine_duration,direct_radiation,shortwave_radiation,weather_code&daily=sunshine_duration,daylight_duration&timezone=auto&past_days=7&forecast_days=2" > om.json
+          python3 - <<'PY'
+          import json
+          j=json.load(open('om.json'))
+          h=j['hourly']; d=j['daily']
+          print("ELEV", j.get('elevation'))
+          for i,t in enumerate(d['time']): print("DAY",t,round(d['sunshine_duration'][i]/3600,2),round(d['daylight_duration'][i]/3600,2))
+          for i,t in enumerate(h['time']):
+              if h['is_day'][i]==1: print("H",t,h['cloud_cover'][i],h['cloud_cover_low'][i],h['cloud_cover_mid'][i],h['cloud_cover_high'][i],h['sunshine_duration'][i],h['direct_radiation'][i],h['shortwave_radiation'][i],h['weather_code'][i])
+          PY
