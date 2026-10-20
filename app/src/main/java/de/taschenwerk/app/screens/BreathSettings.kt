@@ -585,6 +585,8 @@ fun SettingsScreen(nav: Nav) {
                 }
             }
 
+            AppIconCard()
+
             Label("Währung")
             Card(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
                 CurrencyPick("Hauptwährung", store.mainCur) { store.applyMainCur(it) }
@@ -634,6 +636,72 @@ fun SettingsScreen(nav: Nav) {
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun AppIconCard() {
+    val ctx = LocalContext.current
+    val p = LocalPal.current
+    var cur by remember { mutableStateOf(de.taschenwerk.app.util.AppIcon.current(ctx)) }
+    var ask by remember { mutableStateOf<de.taschenwerk.app.util.AppIcon?>(null) }
+    Card {
+        Text("App-Symbol", color = p.ink, fontSize = 16.sp)
+        Spacer(Modifier.height(12.dp))
+        de.taschenwerk.app.util.AppIcon.entries.chunked(4).forEach { row ->
+            Row(Modifier.fillMaxWidth()) {
+                row.forEach { ic ->
+                    val sel = ic == cur
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .clickable { if (!sel) ask = ic }
+                            .padding(vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            Modifier
+                                .size(62.dp)
+                                .border(2.dp, if (sel) p.ink else Color.Transparent, RoundedCornerShape(18.dp))
+                                .padding(5.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            androidx.compose.foundation.Image(
+                                androidx.compose.ui.res.painterResource(ic.preview), ic.label,
+                                Modifier.size(52.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            ic.label, color = if (sel) p.ink else p.sub, fontSize = 11.sp,
+                            fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium, maxLines = 1
+                        )
+                    }
+                }
+                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+    ask?.let { ic ->
+        AlertDialog(
+            onDismissRequest = { ask = null },
+            containerColor = p.card,
+            title = { Text("Symbol wechseln?", color = p.ink) },
+            text = {
+                Text(
+                    "Das neue Symbol erscheint nach ein paar Sekunden. Manche Launcher entfernen dabei das Symbol vom Startbildschirm, dann einfach neu aus der App-Liste ablegen.",
+                    color = p.sub
+                )
+            },
+            confirmButton = {
+                TextButton({
+                    de.taschenwerk.app.util.AppIcon.apply(ctx, ic)
+                    cur = ic
+                    ask = null
+                }) { Text("Wechseln", color = p.ink, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = { TextButton({ ask = null }) { Text("Abbrechen", color = p.sub) } }
+        )
     }
 }
 

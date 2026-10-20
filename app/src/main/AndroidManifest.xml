@@ -39,12 +39,106 @@
             android:exported="true"
             android:screenOrientation="portrait"
             android:launchMode="singleTask"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity-alias
+            android:name=".IconNeon"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_neon"
+            android:roundIcon="@mipmap/ic_neon"
+            android:label="Polytool"
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".IconBauhaus"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_bauhaus"
+            android:roundIcon="@mipmap/ic_bauhaus"
+            android:label="Polytool"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".IconP"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_p"
+            android:roundIcon="@mipmap/ic_p"
+            android:label="Polytool"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".IconNacht"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_nacht"
+            android:roundIcon="@mipmap/ic_nacht"
+            android:label="Polytool"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".IconPastell"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_pastell"
+            android:roundIcon="@mipmap/ic_pastell"
+            android:label="Polytool"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".IconSw"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_sw"
+            android:roundIcon="@mipmap/ic_sw"
+            android:label="Polytool"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".IconSwInv"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_swinv"
+            android:roundIcon="@mipmap/ic_swinv"
+            android:label="Polytool"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
 
         <activity
             android:name=".alarm.RingActivity"
