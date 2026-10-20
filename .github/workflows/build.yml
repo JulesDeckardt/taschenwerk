@@ -48,17 +48,17 @@ jobs:
           git push -f origin build-logs
 
       - name: Name APK
-        run: cp app/build/outputs/apk/release/app-release.apk "Taschenwerk-${{ github.run_number }}.apk"
+        run: cp app/build/outputs/apk/release/app-release.apk "Polytool-${{ github.run_number }}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Taschenwerk-${{ github.run_number }}
-          path: Taschenwerk-*.apk
+          name: Polytool-${{ github.run_number }}
+          path: Polytool-*.apk
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Taschenwerk ${{ github.run_number }}
-          files: Taschenwerk-${{ github.run_number }}.apk
+          name: Polytool ${{ github.run_number }}
+          files: Polytool-${{ github.run_number }}.apk
           make_latest: true

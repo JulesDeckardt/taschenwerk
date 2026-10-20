@@ -617,7 +617,7 @@ fun SettingsScreen(nav: Nav) {
                 }
             }
             Text(
-                "Tipp für OPPO, Realme, Xiaomi & Co.: In den App-Infos von Taschenwerk unter „Akku“ die Hintergrundaktivität erlauben und „Autostart“ einschalten. Dann klingelt der Wecker auch nach langer Ruhezeit sicher.",
+                "Tipp für OPPO, Realme, Xiaomi & Co.: In den App-Infos von Polytool unter „Akku“ die Hintergrundaktivität erlauben und „Autostart“ einschalten. Dann klingelt der Wecker auch nach langer Ruhezeit sicher.",
                 color = p.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp)
             )
 

@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Taschenwerk"
+rootProject.name = "Polytool"
 include(":app")
