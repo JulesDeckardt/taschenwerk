@@ -108,7 +108,23 @@ object Chime {
         }
     }
 
-    private fun out(buf: ShortArray, usage: Int = AudioAttributes.USAGE_MEDIA) {
+    /** Zuletzt gespielter Atem-Ton: ein neuer blendet ihn kurz aus, damit immer nur ein Ton klingt. */
+    private var soloTrack: AudioTrack? = null
+    private val soloLock = Any()
+
+    private fun fadeOut(t: AudioTrack) {
+        thread(isDaemon = true) {
+            runCatching {
+                for (i in 12 downTo 0) {
+                    t.setVolume(i / 12f)
+                    Thread.sleep(14)
+                }
+                t.stop()
+            }
+        }
+    }
+
+    private fun out(buf: ShortArray, usage: Int = AudioAttributes.USAGE_MEDIA, solo: Boolean = false) {
         thread(isDaemon = true) {
             runCatching {
                 val track = AudioTrack.Builder()
@@ -129,8 +145,13 @@ object Chime {
                     .setTransferMode(AudioTrack.MODE_STATIC)
                     .build()
                 track.write(buf, 0, buf.size)
+                if (solo) synchronized(soloLock) {
+                    soloTrack?.let { fadeOut(it) }
+                    soloTrack = track
+                }
                 track.play()
                 Thread.sleep(buf.size * 1000L / SR + 120)
+                if (solo) synchronized(soloLock) { if (soloTrack === track) soloTrack = null }
                 track.release()
             }
         }
@@ -138,7 +159,8 @@ object Chime {
 
     fun play(freq: Double, vol: Double = 0.5, dur: Double = 1.6) = out(samples(freq, vol, dur))
 
-    fun piano(freq: Double, vol: Double = 0.6, dur: Double = 7.0) = out(pianoSamples(freq, vol, dur))
+    fun piano(freq: Double, vol: Double = 0.6, dur: Double = 7.0, solo: Boolean = false) =
+        thread(isDaemon = true) { out(pianoSamples(freq, vol, dur), solo = solo) }
 
     /** Entspanntes Abschluss-Motiv „dim, dim, dim, diiim“ (aufsteigend, weich ausklingend). */
     fun finish(vol: Double = 0.5) {
@@ -184,7 +206,7 @@ object Chime {
                 mix.forEach { if (abs(it) > peak) peak = abs(it) }
                 ShortArray(n) { (mix[it] / peak * vol * 32767).toInt().coerceIn(-32767, 32767).toShort() }
             }
-            out(buf)
+            out(buf, solo = true)
         }
     }
 
@@ -282,8 +304,62 @@ object Chime {
         normalize(reverb(s, 0.18), vol)
     }
 
-    fun bowl(freq: Double, vol: Double = 0.55) { thread(isDaemon = true) { out(bowlSamples(freq, vol)) } }
-    fun kalimba(freq: Double, vol: Double = 0.6) { thread(isDaemon = true) { out(kalimbaSamples(freq, vol)) } }
+    fun bowl(freq: Double, vol: Double = 0.55, solo: Boolean = false) { thread(isDaemon = true) { out(bowlSamples(freq, vol), solo = solo) } }
+    fun kalimba(freq: Double, vol: Double = 0.6, solo: Boolean = false) { thread(isDaemon = true) { out(kalimbaSamples(freq, vol), solo = solo) } }
+    fun crystal(freq: Double, vol: Double = 0.55, solo: Boolean = false) { thread(isDaemon = true) { out(crystalSamples(freq, vol), solo = solo) } }
+    fun gong(freq: Double, vol: Double = 0.6, solo: Boolean = false) { thread(isDaemon = true) { out(gongSamples(freq, vol), solo = solo) } }
+    fun warmCrystal(vararg f: Pair<Double, Double>) { thread(isDaemon = true) { f.forEach { crystalSamples(it.first, it.second) } } }
+    fun warmGong(vararg f: Pair<Double, Double>) { thread(isDaemon = true) { f.forEach { gongSamples(it.first, it.second) } } }
+
+    /**
+     * Allgemeiner Klangkörper aus Eigenschwingungen: Verhältnisse, Lautstärken, Abklingzeiten, Schwebungen.
+     * [bloom]: Obertöne blühen nach dem Anschlag erst auf (Gong).
+     */
+    private fun modal(
+        key: String, freq: Double, vol: Double, dur: Double,
+        ratios: DoubleArray, amps: DoubleArray, taus: DoubleArray, beats: DoubleArray,
+        att: Double, clickTau: Double, clickAmp: Double, clickAlpha: Double, rev: Double, bloom: Double = 0.0
+    ): ShortArray = cache.getOrPut("$key$freq/$vol") {
+        val n = (SR * dur).toInt()
+        val s = DoubleArray(n)
+        val rnd = java.util.Random(7)
+        var lp = 0.0
+        for (i in 0 until n) {
+            val t = i.toDouble() / SR
+            var v = 0.0
+            for (k in ratios.indices) {
+                val f = freq * ratios[k]
+                var e = exp(-t / taus[k])
+                if (bloom > 0 && ratios[k] > 1.3) e *= 1 - exp(-t / bloom)
+                v += amps[k] * e * if (beats[k] > 0)
+                    (sin(2 * PI * f * t) + 0.8 * sin(2 * PI * (f + beats[k]) * t + 0.7)) / 1.8
+                else sin(2 * PI * f * t)
+            }
+            if (t < 0.15) {
+                lp += ((rnd.nextGaussian() * exp(-t / clickTau) * clickAmp) - lp) * clickAlpha
+                v += lp
+            }
+            val a = (t / att).coerceIn(0.0, 1.0).let { it * it * (3 - 2 * it) }
+            val fade = ((dur - t) / 1.0).coerceIn(0.0, 1.0)
+            s[i] = v * a * fade
+        }
+        normalize(reverb(s, rev), vol)
+    }
+
+    /** Kristall-Klangschale: fast reiner Ton, sehr langes, ruhiges Nachschwingen. */
+    private fun crystalSamples(freq: Double, vol: Double) = modal(
+        "cry", freq, vol, 11.0,
+        doubleArrayOf(1.0, 2.0, 3.0), doubleArrayOf(1.0, 0.05, 0.015), doubleArrayOf(12.0, 5.0, 2.5), doubleArrayOf(0.4, 0.0, 0.0),
+        att = 0.03, clickTau = 0.004, clickAmp = 0.02, clickAlpha = 0.12, rev = 0.26
+    )
+
+    /** Sanfter Gong: tief, Obertöne blühen nach dem Anschlag auf und rauschen lange aus. */
+    private fun gongSamples(freq: Double, vol: Double) = modal(
+        "gong", freq, vol, 11.0,
+        doubleArrayOf(1.0, 1.52, 2.03, 2.71, 3.4, 4.2), doubleArrayOf(1.0, 0.5, 0.35, 0.25, 0.12, 0.06),
+        doubleArrayOf(9.0, 7.0, 6.0, 4.5, 3.5, 2.5), doubleArrayOf(0.3, 0.5, 0.7, 0.9, 1.1, 1.4),
+        att = 0.012, clickTau = 0.01, clickAmp = 0.12, clickAlpha = 0.033, rev = 0.3, bloom = 0.35
+    )
     /** Ausklang mit der Kalimba: drei weiche, aufsteigende Töne. */
     fun kalimbaRun() {
         thread(isDaemon = true) {

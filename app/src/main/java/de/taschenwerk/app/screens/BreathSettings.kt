@@ -169,28 +169,18 @@ fun BreathScreen() {
         Phase("pause", "Halten", pause, SMALL, 0.0)
     ).filter { it.sec > 0 }
 
-    /** Ton bzw. Vibration für eine Phase im gewählten Klang. */
+    /** Ton bzw. Vibration für eine Phase im gewählten Klang – immer nur ein Ton zur Zeit, im Zweifel tiefer. */
     fun cue(key: String, k: String = klang) {
-        val holdLike = key == "hold" || key == "pause"
+        val i = when (key) { "in" -> 0; "out" -> 2; else -> 1 }
         when (k) {
-            "piano" -> when {
-                holdLike -> Chime.piano(261.63, 0.3, 4.5)
-                key == "in" -> Chime.piano(196.0, 0.6)
-                else -> Chime.piano(146.83, 0.6)
-            }
-            "bowl" -> when {
-                holdLike -> Chime.bowl(293.66, 0.34)
-                key == "in" -> Chime.bowl(349.23, 0.55)
-                else -> Chime.bowl(261.63, 0.55)
-            }
-            "kalimba" -> when {
-                holdLike -> Chime.kalimba(329.63, 0.35)
-                key == "in" -> Chime.kalimba(392.0, 0.6)
-                else -> Chime.kalimba(293.66, 0.6)
-            }
-            "vibe" -> when {
-                holdLike -> Haptic.hold(ctx)
-                key == "in" -> Haptic.inhale(ctx)
+            "piano" -> Chime.piano(doubleArrayOf(196.0, 261.63, 146.83)[i], if (i == 1) 0.3 else 0.6, if (i == 1) 4.5 else 7.0, solo = true)
+            "bowl" -> Chime.bowl(doubleArrayOf(349.23, 293.66, 261.63)[i], if (i == 1) 0.34 else 0.55, solo = true)
+            "crystal" -> Chime.crystal(doubleArrayOf(293.66, 246.94, 220.0)[i], if (i == 1) 0.36 else 0.55, solo = true)
+            "gong" -> Chime.gong(doubleArrayOf(174.61, 146.83, 130.81)[i], if (i == 1) 0.4 else 0.6, solo = true)
+            "kalimba" -> Chime.kalimba(doubleArrayOf(392.0, 329.63, 293.66)[i], if (i == 1) 0.35 else 0.6, solo = true)
+            "vibe" -> when (i) {
+                0 -> Haptic.inhale(ctx)
+                1 -> Haptic.hold(ctx)
                 else -> Haptic.exhale(ctx)
             }
         }
@@ -199,7 +189,9 @@ fun BreathScreen() {
     fun closing() {
         when (klang) {
             "piano" -> Chime.closing()
-            "bowl" -> Chime.bowl(174.61, 0.5)
+            "bowl" -> Chime.bowl(174.61, 0.5, solo = true)
+            "crystal" -> Chime.crystal(196.0, 0.5, solo = true)
+            "gong" -> Chime.gong(110.0, 0.55, solo = true)
             "kalimba" -> Chime.kalimbaRun()
             "vibe" -> Haptic.done(ctx)
         }
@@ -213,6 +205,8 @@ fun BreathScreen() {
             "piano" -> { Chime.warm(196.0, 146.83); Chime.warmPiano(261.63, 0.3, 4.5) }
             "bowl" -> Chime.warmBowl(349.23 to 0.55, 293.66 to 0.34, 261.63 to 0.55)
             "kalimba" -> Chime.warmKalimba(392.0 to 0.6, 329.63 to 0.35, 293.66 to 0.6)
+            "crystal" -> Chime.warmCrystal(293.66 to 0.55, 246.94 to 0.36, 220.0 to 0.55)
+            "gong" -> Chime.warmGong(174.61 to 0.6, 146.83 to 0.4, 130.81 to 0.6)
         }
     }
 
@@ -540,7 +534,8 @@ fun BreathScreen() {
 }
 
 private val KLANGE = listOf(
-    "none" to "Kein Klang", "piano" to "Klavier", "bowl" to "Klangschale", "kalimba" to "Kalimba", "vibe" to "Vibration"
+    "none" to "Kein Klang", "piano" to "Klavier", "bowl" to "Klangschale", "crystal" to "Kristallschale",
+    "gong" to "Sanfter Gong", "kalimba" to "Kalimba", "vibe" to "Vibration"
 )
 
 private fun rhythmText(v: List<Int>) = v.filter { it > 0 }.joinToString(" · ")
