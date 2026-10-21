@@ -18,6 +18,8 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.cos
+import kotlin.math.sin
 
 data class HourW(
     val label: String, val time: String, val temp: Double, val code: Int, val day: Boolean, val past: Boolean,
@@ -167,6 +169,29 @@ fun iconCloud(cloud: Double, sunFrac: Double, day: Boolean): Double {
     return cloud * (1 - f) + minOf(cloud, 35.0) * f
 }
 
+/** Sonnenhöhe in Radiant (NOAA-Näherung) für einen UTC-Zeitpunkt. */
+private fun solarElevation(lat: Double, lon: Double, utc: java.time.ZonedDateTime): Double {
+    val n = utc.dayOfYear
+    val hr = utc.hour + utc.minute / 60.0
+    val g = 2 * Math.PI / 365 * (n - 1 + (hr - 12) / 24)
+    val decl = 0.006918 - 0.399912 * cos(g) + 0.070257 * sin(g) - 0.006758 * cos(2 * g) +
+        0.000907 * sin(2 * g) - 0.002697 * cos(3 * g) + 0.00148 * sin(3 * g)
+    val eot = 229.18 * (0.000075 + 0.001868 * cos(g) - 0.032077 * sin(g) - 0.014615 * cos(2 * g) - 0.040849 * sin(2 * g))
+    val ha = Math.toRadians((hr * 60 + eot + 4 * lon) / 4 - 180)
+    val la = Math.toRadians(lat)
+    return kotlin.math.asin(sin(la) * sin(decl) + cos(la) * cos(decl) * cos(ha))
+}
+
+/** Direkte Strahlung auf die Horizontale bei wolkenlosem Himmel (Meinel-Modell mit Höhenkorrektur), W/m². */
+private fun clearSkyDirect(lat: Double, lon: Double, elevKm: Double, utc: java.time.ZonedDateTime): Double {
+    val e = solarElevation(lat, lon, utc)
+    if (e <= 0.02) return 0.0
+    val am = 1 / (sin(e) + 0.50572 * Math.pow(Math.toDegrees(e) + 6.07995, -1.6364))
+    val h = elevKm.coerceIn(0.0, 5.0)
+    val dni = 1361 * ((1 - 0.14 * h) * Math.pow(0.7, Math.pow(am, 0.678)) + 0.14 * h)
+    return dni * sin(e)
+}
+
 /** Sonnenstunden als ganze Zahl: ab ,6 aufrunden, bis einschließlich ,5 abrunden. */
 fun sunHours(h: Double): Int = if (h.isNaN()) 0 else kotlin.math.ceil(h - 0.5).toInt().coerceAtLeast(0)
 
@@ -184,7 +209,7 @@ object WeatherRepo {
     suspend fun fetch(lat: Double, lon: Double, name: String): WeatherData {
         val url = "https://api.open-meteo.com/v1/forecast?latitude=${f(lat)}&longitude=${f(lon)}" +
             "&current=temperature_2m,relative_humidity_2m,apparent_temperature,dew_point_2m,weather_code,wind_speed_10m,is_day,pressure_msl,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation" +
-            "&hourly=temperature_2m,weather_code,is_day,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,sunshine_duration" +
+            "&hourly=temperature_2m,weather_code,is_day,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation,sunshine_duration,direct_radiation" +
             "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunshine_duration,daylight_duration,precipitation_sum,precipitation_probability_max" +
             "&timezone=auto&past_days=1&forecast_days=7"
         val j = Net.getJson(url)
@@ -210,11 +235,28 @@ object WeatherRepo {
             )
         }
         val hPre = hourly.optJSONArray("precipitation")
-        // Sonnenschein laut Strahlung (Sekunden je Stunde, gilt für die Stunde *vor* dem Zeitstempel)
+        // Sonnenanteil je Stunde aus der direkten Sonnenstrahlung im Verhältnis zum wolkenlosen Himmel.
+        // Werte gelten für die Stunde *vor* dem Zeitstempel. Unter 20 % des Klarhimmel-Werts: keine Sonne,
+        // ab 70 %: volle Sonne, dazwischen anteilig. Ohne Strahlungswerte: Open-Meteos Sonnenscheindauer.
         val hSun = hourly.optJSONArray("sunshine_duration")
-        fun sunFrac(k: Int): Double =
-            if (hSun == null || k < 0 || k >= hSun.length() || hSun.isNull(k)) Double.NaN
-            else (hSun.optDouble(k, Double.NaN) / 3600.0).coerceIn(0.0, 1.0)
+        val hDir = hourly.optJSONArray("direct_radiation")
+        val offset = java.time.ZoneOffset.ofTotalSeconds(j.optInt("utc_offset_seconds", 0))
+        val elevKm = j.optDouble("elevation", 0.0).let { if (it.isNaN()) 0.0 else it / 1000.0 }
+        val fracCache = HashMap<Int, Double>()
+        fun sunFrac(k: Int): Double = fracCache.getOrPut(k) {
+            if (k < 0 || k >= hTimes.length()) return@getOrPut Double.NaN
+            val dr = if (hDir == null || hDir.isNull(k)) Double.NaN else hDir.optDouble(k, Double.NaN)
+            if (!dr.isNaN()) {
+                val end = LocalDateTime.parse(hTimes.getString(k)).atOffset(offset).toZonedDateTime()
+                    .withZoneSameInstant(java.time.ZoneOffset.UTC)
+                var cs = 0.0
+                for (m in listOf(55L, 45L, 35L, 25L, 15L, 5L)) cs += clearSkyDirect(lat, lon, elevKm, end.minusMinutes(m))
+                cs /= 6
+                if (cs < 20) 0.0 else ((dr / cs - 0.2) / 0.5).coerceIn(0.0, 1.0)
+            } else if (hSun != null && !hSun.isNull(k)) {
+                (hSun.optDouble(k, Double.NaN) / 3600.0).coerceIn(0.0, 1.0)
+            } else Double.NaN
+        }
         val hIndex = HashMap<String, Int>()
         for (k in 0 until hTimes.length()) hIndex[hTimes.getString(k).take(13)] = k
 
@@ -224,7 +266,7 @@ object WeatherRepo {
         val sunByDate = HashMap<String, Double>()
         val cloudSum = HashMap<String, Double>()
         val cloudN = HashMap<String, Int>()
-        val hasSun = hSun != null
+        val hasSun = hSun != null || hDir != null
         for (k in 0 until hTimes.length()) {
             val date = hTimes.getString(k).take(10)
             if (hasSun) {

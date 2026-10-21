@@ -22,6 +22,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
@@ -347,8 +349,21 @@ fun alarmSubtitle(a: de.taschenwerk.app.data.Alarm): String {
 
 /** Währungsrechner mit zwei Zeilen (auch auf der Startseite). */
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun CurrencyCard(store: Store) {
     val p = LocalPal.current
+    // Beim Antippen eines Betrags die ganze Karte über die Tastatur schieben,
+    // damit das Ergebnis darunter sofort sichtbar ist.
+    val bring = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+    var focused by remember { mutableStateOf(false) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val imeBottom = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(density)
+    LaunchedEffect(focused, imeBottom) {
+        if (focused) {
+            kotlinx.coroutines.delay(60)
+            bring.bringIntoView()
+        }
+    }
     LaunchedEffect(Unit) { Rates.refresh(store) }
     val from = store.mainCur
     val to = store.secondCur
@@ -362,7 +377,12 @@ fun CurrencyCard(store: Store) {
     val shownB = if (editedTop) aVal?.let { Rates.convert(it, from, to) }?.let { fmt(it, 2) } ?: "" else bText
     val shownA = if (!editedTop) bVal?.let { Rates.convert(it, to, from) }?.let { fmt(it, 2) } ?: "" else aText
 
-    Card(padding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)) {
+    Card(
+        modifier = Modifier
+            .bringIntoViewRequester(bring)
+            .onFocusChanged { focused = it.hasFocus },
+        padding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Währung", color = p.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             val one = Rates.convert(1.0, to, from)

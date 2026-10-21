@@ -94,8 +94,8 @@ val TECHS = listOf(
 private data class Phase(val key: String, val label: String, val sec: Int, val to: Float, val freq: Double)
 
 private const val SMALL = 0.42f
-/** Größe des Balls (ganz eingeatmet) im Verhältnis zum Hof. */
-private const val BALL = 0.84f
+/** Größe des Balls (ganz eingeatmet) im Verhältnis zum Hof: füllt ihn ganz aus. */
+private const val BALL = 1f
 private val Ease = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
 
 @Composable
@@ -231,7 +231,7 @@ fun BreathScreen() {
                 .fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            val d = minOf(maxWidth - 32.dp, maxHeight - 8.dp, 340.dp)
+            val d = minOf(maxWidth - 120.dp, maxHeight - 40.dp, 260.dp)
             Box(Modifier.size(d), contentAlignment = Alignment.Center) {
                 // Sanfte Flächen statt Linien: außen ein heller Hof (ganz eingeatmet),
                 // innen eine leicht abgesetzte Scheibe (ganz ausgeatmet).
