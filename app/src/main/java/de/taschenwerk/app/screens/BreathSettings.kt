@@ -170,32 +170,26 @@ fun BreathScreen() {
         Phase("pause", "Halten", pause, SMALL, 0.0)
     ).filter { it.sec > 0 }
 
-    /** Ton bzw. Vibration für eine Phase im gewählten Klang – immer nur ein Ton zur Zeit, im Zweifel tiefer. */
+    /** Ton bzw. Vibration für eine Phase – immer nur ein Ton zur Zeit, alle Klänge gleich laut. */
     fun cue(key: String, k: String = klang, ms: Long = 3000L) {
         val i = when (key) { "in" -> 0; "out" -> 2; else -> 1 }
-        val h = i == 1
-        when (k) {
-            "piano" -> Chime.piano(doubleArrayOf(196.0, 261.63, 146.83)[i], if (h) 0.3 else 0.6, if (h) 4.5 else 7.0, solo = true, maxMs = ms)
-            "bowl" -> Chime.bowl(doubleArrayOf(349.23, 293.66, 261.63)[i], if (h) 0.34 else 0.55, solo = true, maxMs = ms)
-            "crystal" -> Chime.crystal(doubleArrayOf(261.63, 220.0, 196.0)[i], if (h) 0.3 else 0.45, solo = true, maxMs = ms)
-            "gong" -> Chime.gong(doubleArrayOf(174.61, 146.83, 130.81)[i], if (h) 0.34 else 0.5, solo = true, maxMs = ms)
-            "kalimba" -> Chime.kalimba(doubleArrayOf(392.0, 329.63, 293.66)[i], if (h) 0.35 else 0.6, solo = true, maxMs = ms)
-            "vibe" -> when (i) {
+        if (k == "vibe") {
+            when (i) {
                 0 -> Haptic.inhale(ctx)
                 1 -> Haptic.hold(ctx)
                 else -> Haptic.exhale(ctx)
             }
+            return
         }
+        val f = TONES[k]?.get(i) ?: return
+        Chime.breath(k, f, if (i == 1) HOLD_LEVEL else 1.0, ms)
     }
 
     fun closing() {
         when (klang) {
-            "piano" -> Chime.closing()
-            "bowl" -> Chime.bowl(174.61, 0.5, solo = true)
-            "crystal" -> Chime.crystal(174.61, 0.42, solo = true, maxMs = 5000)
-            "gong" -> Chime.gong(110.0, 0.48, solo = true, maxMs = 5500)
-            "kalimba" -> Chime.kalimbaRun()
+            "none" -> Unit
             "vibe" -> Haptic.done(ctx)
+            else -> Chime.breathClosing(klang)
         }
     }
 
@@ -203,13 +197,7 @@ fun BreathScreen() {
     var editCustom by remember { mutableStateOf<Tech?>(null) }
     var newCustom by remember { mutableStateOf(false) }
     LaunchedEffect(klang) {
-        when (klang) {
-            "piano" -> { Chime.warm(196.0, 146.83); Chime.warmPiano(261.63, 0.3, 4.5) }
-            "bowl" -> Chime.warmBowl(349.23 to 0.55, 293.66 to 0.34, 261.63 to 0.55)
-            "kalimba" -> Chime.warmKalimba(392.0 to 0.6, 329.63 to 0.35, 293.66 to 0.6)
-            "crystal" -> Chime.warmCrystal(261.63 to 0.45, 220.0 to 0.3, 196.0 to 0.45)
-            "gong" -> Chime.warmGong(174.61 to 0.5, 146.83 to 0.34, 130.81 to 0.5)
-        }
+        TONES[klang]?.let { t -> Chime.warmBreath(klang, t[0] to 1.0, t[1] to HOLD_LEVEL, t[2] to 1.0) }
     }
 
     val view = LocalView.current
@@ -537,6 +525,18 @@ fun BreathScreen() {
         )
     }
 }
+
+/** Tonhöhen je Klang: Einatmen, Halten, Ausatmen – im Zweifel tiefer. */
+private val TONES = mapOf(
+    "piano" to doubleArrayOf(196.0, 261.63, 146.83),
+    "bowl" to doubleArrayOf(349.23, 293.66, 261.63),
+    "crystal" to doubleArrayOf(261.63, 220.0, 196.0),
+    "gong" to doubleArrayOf(174.61, 146.83, 130.81),
+    "kalimba" to doubleArrayOf(349.23, 293.66, 261.63)
+)
+
+/** Halten-Ton leiser als Ein-/Ausatmen. */
+private const val HOLD_LEVEL = 0.62
 
 private val KLANGE = listOf(
     "none" to "Kein Klang", "piano" to "Klavier", "bowl" to "Klangschale", "crystal" to "Kristallschale",

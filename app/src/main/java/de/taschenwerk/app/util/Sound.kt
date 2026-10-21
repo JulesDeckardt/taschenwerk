@@ -129,17 +129,6 @@ object Chime {
         thread(isDaemon = true) { fade(t, 320) }
     }
 
-    /** Puffer auf [ms] kürzen und mit weicher Kosinus-Blende enden lassen – direkt im Klang, ohne Lautstärkesprünge. */
-    private fun trimmed(buf: ShortArray, ms: Long): ShortArray {
-        val n = (ms * SR / 1000).toInt().coerceIn(1, buf.size)
-        val fadeN = (minOf(700L, ms / 3) * SR / 1000).toInt().coerceAtLeast(1)
-        return ShortArray(n) { i ->
-            val left = n - 1 - i
-            if (left >= fadeN) buf[i]
-            else (buf[i] * (0.5 - 0.5 * kotlin.math.cos(PI * left / fadeN))).toInt().toShort()
-        }
-    }
-
     /** Laufenden Atem-Ton sanft beenden (Pause, Seite verlassen). */
     fun stopSolo() {
         synchronized(soloLock) {
@@ -155,7 +144,7 @@ object Chime {
     private fun out(full: ShortArray, usage: Int = AudioAttributes.USAGE_MEDIA, solo: Boolean = false, maxMs: Long = 0) {
         thread(isDaemon = true) {
             runCatching {
-                val buf = if (maxMs > 0 && maxMs * SR / 1000 < full.size) trimmed(full, maxMs) else full
+                val buf = if (maxMs > 0 && maxMs * SR / 1000 < full.size) Synth.trimmed(full, maxMs) else full
                 val track = AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()
@@ -244,164 +233,48 @@ object Chime {
         thread(isDaemon = true) { freqs.forEach { pianoSamples(it, 0.6, 7.0); pianoSamples(it, 0.42, 7.0) } }
     }
 
-    /** Leichter Raumhall (Schroeder: 4 Kammfilter + 2 Allpässe), damit es nicht nach Computer klingt. */
-    private fun reverb(x: DoubleArray, mix: Double): DoubleArray {
-        val n = x.size
-        val wet = DoubleArray(n)
-        val combs = arrayOf(1557 to 0.84, 1617 to 0.83, 1491 to 0.82, 1422 to 0.81)
-        for ((d, g) in combs) {
-            val b = DoubleArray(n)
-            for (i in 0 until n) {
-                b[i] = x[i] + (if (i >= d) g * b[i - d] else 0.0)
-                wet[i] += b[i] * 0.25
-            }
-        }
-        var y = wet
-        for ((d, g) in arrayOf(225 to 0.5, 556 to 0.5)) {
-            val z = DoubleArray(n)
-            for (i in 0 until n) {
-                val xd = if (i >= d) y[i - d] else 0.0
-                val zd = if (i >= d) z[i - d] else 0.0
-                z[i] = -g * y[i] + xd + g * zd
-            }
-            y = z
-        }
-        return DoubleArray(n) { x[it] * (1 - mix) + y[it] * mix }
+    // ------------------------------------------------------------ Atem-Klänge (alle gleich laut, siehe Synth)
+
+    private fun breathRaw(kind: String, freq: Double): DoubleArray = when (kind) {
+        "piano" -> Synth.piano(freq, 7.0)
+        "bowl" -> Synth.bowl(freq)
+        "crystal" -> Synth.crystal(freq)
+        "gong" -> Synth.gong(freq)
+        else -> Synth.kalimba(freq)
     }
 
-    private fun normalize(s: DoubleArray, vol: Double): ShortArray {
-        var peak = 1e-9
-        s.forEach { if (abs(it) > peak) peak = abs(it) }
-        return ShortArray(s.size) { (s[it] / peak * vol * 32767).toInt().coerceIn(-32767, 32767).toShort() }
+    private fun breathBuf(kind: String, freq: Double, level: Double): ShortArray =
+        cache.getOrPut("br/$kind/$freq/$level") { Synth.level(breathRaw(kind, freq), level) }
+
+    /** Ein Atem-Ton: immer nur einer zur Zeit, endet spätestens nach [maxMs] weich. */
+    fun breath(kind: String, freq: Double, level: Double, maxMs: Long) {
+        thread(isDaemon = true) { out(breathBuf(kind, freq, level), solo = true, maxMs = maxMs) }
     }
 
-    /**
-     * Tibetische Klangschale („Bim“): unharmonische Eigenschwingungen (1 : 2,71 : 5,06 : 8,2),
-     * jede als leicht verstimmtes Paar, das schwebt („wah-wah“), weicher Klöppel, langer Nachklang.
-     */
-    private fun bowlSamples(freq: Double, vol: Double): ShortArray = cache.getOrPut("bowl$freq/$vol") {
-        val dur = 10.0
-        val n = (SR * dur).toInt()
-        val s = DoubleArray(n)
-        val ratios = doubleArrayOf(1.0, 2.71, 5.06, 8.2)
-        // große Schale: obere Teiltöne leiser (weniger schrill), längeres Ausschwingen, ruhigere Schwebung
-        val amps = doubleArrayOf(1.0, 0.34, 0.10, 0.03)
-        val taus = doubleArrayOf(9.0, 5.5, 3.0, 1.6)
-        val beats = doubleArrayOf(0.6, 1.1, 1.7, 2.4)
-        val rnd = java.util.Random(3)
-        var lp = 0.0
-        for (i in 0 until n) {
-            val t = i.toDouble() / SR
-            var v = 0.0
-            for (k in ratios.indices) {
-                val f = freq * ratios[k]
-                v += amps[k] * exp(-t / taus[k]) * (sin(2 * PI * f * t) + 0.8 * sin(2 * PI * (f + beats[k]) * t + 0.7)) / 1.8
-            }
-            // Anschlag mit dem Filzklöppel: kurzes, gedämpftes Rauschen
-            if (t < 0.05) {
-                lp += ((rnd.nextGaussian() * exp(-t / 0.005) * 0.06) - lp) * 0.08
-                v += lp
-            }
-            val a = (t / 0.006).coerceIn(0.0, 1.0).let { it * it * (3 - 2 * it) }
-            val fade = ((dur - t) / 1.0).coerceIn(0.0, 1.0)
-            s[i] = v * a * fade
-        }
-        normalize(reverb(s, 0.22), vol)
+    fun warmBreath(kind: String, vararg tones: Pair<Double, Double>) {
+        thread(isDaemon = true) { tones.forEach { breathBuf(kind, it.first, it.second) } }
     }
 
-    /** Kalimba (Daumenklavier): gezupfte Metallzunge auf Holz – kurz, weich, mit leisem „Tock“. */
-    private fun kalimbaSamples(freq: Double, vol: Double): ShortArray = cache.getOrPut("kal$freq/$vol") {
-        val dur = 3.2
-        val n = (SR * dur).toInt()
-        val s = DoubleArray(n)
-        val rnd = java.util.Random(5)
-        var lp = 0.0
-        for (i in 0 until n) {
-            val t = i.toDouble() / SR
-            var v = exp(-t / 1.1) * sin(2 * PI * freq * t) +
-                0.12 * exp(-t / 0.35) * sin(2 * PI * 2 * freq * t) +
-                0.22 * exp(-t / 0.09) * sin(2 * PI * 5.93 * freq * t) +
-                0.08 * exp(-t / 0.05) * sin(2 * PI * 13.4 * freq * t)
-            if (t < 0.06) {
-                lp += ((rnd.nextGaussian() * exp(-t / 0.006) * 0.25) - lp) * 0.05
-                v += lp
-            }
-            val a = (t / 0.003).coerceIn(0.0, 1.0)
-            val fade = ((dur - t) / 0.6).coerceIn(0.0, 1.0)
-            s[i] = v * a * fade
-        }
-        normalize(reverb(s, 0.18), vol)
-    }
-
-    fun bowl(freq: Double, vol: Double = 0.55, solo: Boolean = false, maxMs: Long = 0) { thread(isDaemon = true) { out(bowlSamples(freq, vol), solo = solo, maxMs = maxMs) } }
-    fun kalimba(freq: Double, vol: Double = 0.6, solo: Boolean = false, maxMs: Long = 0) { thread(isDaemon = true) { out(kalimbaSamples(freq, vol), solo = solo, maxMs = maxMs) } }
-    fun crystal(freq: Double, vol: Double = 0.55, solo: Boolean = false, maxMs: Long = 0) { thread(isDaemon = true) { out(crystalSamples(freq, vol), solo = solo, maxMs = maxMs) } }
-    fun gong(freq: Double, vol: Double = 0.6, solo: Boolean = false, maxMs: Long = 0) { thread(isDaemon = true) { out(gongSamples(freq, vol), solo = solo, maxMs = maxMs) } }
-    fun warmCrystal(vararg f: Pair<Double, Double>) { thread(isDaemon = true) { f.forEach { crystalSamples(it.first, it.second) } } }
-    fun warmGong(vararg f: Pair<Double, Double>) { thread(isDaemon = true) { f.forEach { gongSamples(it.first, it.second) } } }
-
-    /**
-     * Allgemeiner Klangkörper aus Eigenschwingungen: Verhältnisse, Lautstärken, Abklingzeiten, Schwebungen.
-     * [bloom]: Obertöne blühen nach dem Anschlag erst auf (Gong).
-     */
-    private fun modal(
-        key: String, freq: Double, vol: Double, dur: Double,
-        ratios: DoubleArray, amps: DoubleArray, taus: DoubleArray, beats: DoubleArray,
-        att: Double, clickTau: Double, clickAmp: Double, clickAlpha: Double, rev: Double, bloom: Double = 0.0
-    ): ShortArray = cache.getOrPut("$key$freq/$vol") {
-        val n = (SR * dur).toInt()
-        val s = DoubleArray(n)
-        val rnd = java.util.Random(7)
-        var lp = 0.0
-        for (i in 0 until n) {
-            val t = i.toDouble() / SR
-            var v = 0.0
-            for (k in ratios.indices) {
-                val f = freq * ratios[k]
-                var e = exp(-t / taus[k])
-                if (bloom > 0 && ratios[k] > 1.3) e *= 1 - exp(-t / bloom)
-                v += amps[k] * e * if (beats[k] > 0)
-                    (sin(2 * PI * f * t) + 0.8 * sin(2 * PI * (f + beats[k]) * t + 0.7)) / 1.8
-                else sin(2 * PI * f * t)
-            }
-            if (t < 0.15) {
-                lp += ((rnd.nextGaussian() * exp(-t / clickTau) * clickAmp) - lp) * clickAlpha
-                v += lp
-            }
-            val a = (t / att).coerceIn(0.0, 1.0).let { it * it * (3 - 2 * it) }
-            val fade = ((dur - t) / 1.0).coerceIn(0.0, 1.0)
-            s[i] = v * a * fade
-        }
-        normalize(reverb(s, rev), vol)
-    }
-
-    /** Kristall-Klangschale: fast reiner Ton, sehr langes, ruhiges Nachschwingen. */
-    private fun crystalSamples(freq: Double, vol: Double) = modal(
-        "cry3", freq, vol, 6.0,
-        doubleArrayOf(1.0, 2.0, 3.0), doubleArrayOf(1.0, 0.04, 0.01), doubleArrayOf(3.2, 2.0, 1.2), doubleArrayOf(0.4, 0.0, 0.0),
-        att = 0.04, clickTau = 0.004, clickAmp = 0.0, clickAlpha = 0.12, rev = 0.18
-    )
-
-    /** Sanfter Gong: tief, Obertöne blühen nach dem Anschlag auf und rauschen lange aus. */
-    private fun gongSamples(freq: Double, vol: Double) = modal(
-        "gong3", freq, vol, 6.5,
-        doubleArrayOf(1.0, 1.52, 2.03, 2.71, 3.4, 4.2), doubleArrayOf(1.0, 0.45, 0.3, 0.2, 0.09, 0.04),
-        doubleArrayOf(3.6, 3.0, 2.6, 2.2, 1.8, 1.4), doubleArrayOf(0.3, 0.5, 0.7, 0.9, 1.1, 1.4),
-        att = 0.03, clickTau = 0.01, clickAmp = 0.0, clickAlpha = 0.033, rev = 0.22, bloom = 0.25
-    )
-    /** Ausklang mit der Kalimba: drei weiche, aufsteigende Töne. */
-    fun kalimbaRun() {
+    /** Ausklang am Ende der Atemübung im gewählten Klang. */
+    fun breathClosing(kind: String) {
         thread(isDaemon = true) {
-            val notes = doubleArrayOf(293.66, 392.0, 493.88)
-            notes.forEachIndexed { i, f ->
-                out(kalimbaSamples(f, if (i == 2) 0.5 else 0.42))
-                Thread.sleep(380)
+            val buf = cache.getOrPut("brEnd/$kind") {
+                val raw = when (kind) {
+                    "piano" -> Synth.arpeggio(
+                        listOf(146.83, 220.0, 293.66, 369.99).map { Synth.piano(it, 8.0) }, 0.55, doubleArrayOf(1.0, 0.75, 0.6, 0.45)
+                    )
+                    "kalimba" -> Synth.arpeggio(
+                        listOf(261.63, 349.23, 440.0).map { Synth.kalimba(it) }, 0.38, doubleArrayOf(0.8, 0.8, 1.0)
+                    )
+                    "bowl" -> Synth.bowl(174.61)
+                    "crystal" -> Synth.crystal(174.61)
+                    else -> Synth.gong(110.0)
+                }
+                Synth.level(raw, 0.9)
             }
+            out(buf, solo = true, maxMs = 7000)
         }
     }
-
-    fun warmBowl(vararg f: Pair<Double, Double>) { thread(isDaemon = true) { f.forEach { bowlSamples(it.first, it.second) } } }
-    fun warmKalimba(vararg f: Pair<Double, Double>) { thread(isDaemon = true) { f.forEach { kalimbaSamples(it.first, it.second) } } }
 
     fun warmPiano(freq: Double, vol: Double, dur: Double) {
         thread(isDaemon = true) { pianoSamples(freq, vol, dur) }
