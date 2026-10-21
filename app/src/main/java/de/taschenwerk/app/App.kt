@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -76,6 +77,12 @@ sealed interface Overlay {
     data class EditWorkout(val id: String?) : Overlay
     data class RunWorkout(val id: String) : Overlay
     data class EditAlarm(val id: Int?) : Overlay
+}
+
+/** Zen-Modus der Atemübung: alles außer dem Ball ausblenden. */
+object Zen {
+    var hide by mutableStateOf(false)
+    var wake by mutableIntStateOf(0)
 }
 
 class Nav {
@@ -159,7 +166,19 @@ fun TaschenwerkApp() {
                         Tab.BREATH -> BreathScreen()
                     }
                 }
-                NavBar(nav.tab) { nav.go(it) }
+                // Im Zen-Modus der Atemübung blendet die Leiste aus (Platz bleibt, damit nichts springt);
+                // ein Tipp darauf holt die Steuerung zurück.
+                val navAlpha by androidx.compose.animation.core.animateFloatAsState(
+                    if (Zen.hide) 0f else 1f, androidx.compose.animation.core.tween(900), label = "zen"
+                )
+                Box(Modifier.graphicsLayer { alpha = navAlpha }) {
+                    NavBar(nav.tab) { nav.go(it) }
+                    if (Zen.hide) Box(
+                        Modifier
+                            .matchParentSize()
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { Zen.wake++ }
+                    )
+                }
             }
             val ov = nav.overlay
             if (ov != null) {

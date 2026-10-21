@@ -53,6 +53,9 @@ object Ic {
     val mountain by lazy { stroke("mountain", "M2.5 19.5L9 8.5l4.2 6.4 2.3-3.2 6 8.8z") }
     val breath by lazy { stroke("breath", c(12f, 12f, 3.5f), c(12f, 12f, 8.5f)) }
     val more by lazy { filled("more", c(12f, 5f, 1.8f), c(12f, 12f, 1.8f), c(12f, 19f, 1.8f)) }
+    val dots by lazy { filled("dots", c(5.5f, 12f, 1.9f), c(12f, 12f, 1.9f), c(18.5f, 12f, 1.9f)) }
+    val clock by lazy { stroke("clock", c(12f, 12f, 8.5f), "M12 7.8V12l3 2") }
+    val note by lazy { stroke("note", "M9.5 17.5V6.2l9-2v11", c(7.2f, 17.5f, 2.3f), c(16.2f, 15.2f, 2.3f)) }
     val chevDown by lazy { stroke("chevDown", "M6 9l6 6 6-6", w = 2f) }
     val chevRight by lazy { stroke("chevRight", "M9 6l6 6-6 6", w = 2f) }
     val chevLeft by lazy { stroke("chevLeft", "M15 6l-6 6 6 6", w = 2f) }

@@ -51,6 +51,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.SideEffect
+import de.taschenwerk.app.util.Haptic
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -109,19 +115,44 @@ fun BreathScreen() {
     var hold by remember { mutableIntStateOf(store.getLong("brHold", 4L).toInt()) }
     var exh by remember { mutableIntStateOf(store.getLong("brOut", 4L).toInt()) }
     var pause by remember { mutableIntStateOf(store.getLong("brPause", 4L).toInt()) }
-    var sound by remember { mutableStateOf(store.getBool("brSound", true)) }
-    var running by remember { mutableStateOf(false) }
-    var label by remember { mutableStateOf("Bereit") }
-    var done by remember { mutableStateOf(false) }
-    var durVersion by remember { mutableIntStateOf(0) }
-    val minutes = remember(tech, durVersion) { store.getLong("brDur_$tech", 5L).toInt() }
-    fun setDur(id: String, m: Int) {
-        store.putLong("brDur_$id", m.toLong())
-        durVersion++
+    // Klang: none, piano, bowl, kalimba, vibe (früher nur Ton an/aus)
+    var klang by remember {
+        mutableStateOf(store.getString("brKlang") ?: if (store.getBool("brSound", true)) "piano" else "none")
     }
-    var durDialog by remember { mutableStateOf(false) }
+    fun setKlang(k: String) {
+        if (klang != "none") store.putString("brKlangLast", klang)
+        klang = k
+        store.putString("brKlang", k)
+    }
+    var running by remember { mutableStateOf(false) }
+    var ver by remember { mutableIntStateOf(0) }
+    val minutes = remember(tech, ver) { store.getLong("brDur_$tech", 5L).toInt() }
+    val tempo = remember(tech, ver) { store.getLong("brTempo_$tech", 0L).toInt() }
+    fun setDur(id: String, m: Int) { store.putLong("brDur_$id", m.toLong()); ver++ }
+    fun setTempo(t: Int) { store.putLong("brTempo_$tech", t.toLong()); ver++ }
+    var techOpen by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var guideOpen by remember { mutableStateOf(false) }
     var infoTech by remember { mutableStateOf<Tech?>(null) }
     val scale = remember { Animatable(SMALL) }
+
+    // Steuerung während der Übung: ausgeblendet, ein Tipp zeigt sie für ein paar Sekunden.
+    var awake by remember { mutableIntStateOf(0) }
+    var awakeOn by remember { mutableStateOf(false) }
+    LaunchedEffect(awake) {
+        if (awake == 0) return@LaunchedEffect
+        awakeOn = true
+        delay(3200)
+        awakeOn = false
+    }
+    val showControls = !running || awakeOn
+    val ctrlAlpha by androidx.compose.animation.core.animateFloatAsState(
+        if (showControls) 1f else 0f, tween(if (showControls) 350 else 900), label = "ctrl"
+    )
+    SideEffect { de.taschenwerk.app.Zen.hide = running && !awakeOn }
+    DisposableEffect(Unit) { onDispose { de.taschenwerk.app.Zen.hide = false } }
+    val navWake = de.taschenwerk.app.Zen.wake
+    LaunchedEffect(navWake) { if (navWake > 0 && running) awake++ }
 
     fun persist() {
         store.putString("brTech", tech)
@@ -131,18 +162,59 @@ fun BreathScreen() {
         store.putLong("brPause", pause.toLong())
     }
 
-    // Weiche Klaviertöne: Einatmen G3, Ausatmen D3, Luft anhalten C4 (etwas heller, leiser und kürzer).
     fun phases() = listOf(
-        Phase("in", "Einatmen", inh, 1f, 196.0),
-        Phase("hold", "Halten", hold, 1f, 261.63),
-        Phase("out", "Ausatmen", exh, SMALL, 146.83),
-        Phase("pause", "Halten", pause, SMALL, 261.63)
+        Phase("in", "Einatmen", inh, 1f, 0.0),
+        Phase("hold", "Halten", hold, 1f, 0.0),
+        Phase("out", "Ausatmen", exh, SMALL, 0.0),
+        Phase("pause", "Halten", pause, SMALL, 0.0)
     ).filter { it.sec > 0 }
+
+    /** Ton bzw. Vibration für eine Phase im gewählten Klang. */
+    fun cue(key: String, k: String = klang) {
+        val holdLike = key == "hold" || key == "pause"
+        when (k) {
+            "piano" -> when {
+                holdLike -> Chime.piano(261.63, 0.3, 4.5)
+                key == "in" -> Chime.piano(196.0, 0.6)
+                else -> Chime.piano(146.83, 0.6)
+            }
+            "bowl" -> when {
+                holdLike -> Chime.bowl(329.63, 0.32)
+                key == "in" -> Chime.bowl(392.0, 0.55)
+                else -> Chime.bowl(293.66, 0.55)
+            }
+            "kalimba" -> when {
+                holdLike -> Chime.kalimba(329.63, 0.35)
+                key == "in" -> Chime.kalimba(392.0, 0.6)
+                else -> Chime.kalimba(293.66, 0.6)
+            }
+            "vibe" -> when {
+                holdLike -> Haptic.hold(ctx)
+                key == "in" -> Haptic.inhale(ctx)
+                else -> Haptic.exhale(ctx)
+            }
+        }
+    }
+
+    fun closing() {
+        when (klang) {
+            "piano" -> Chime.closing()
+            "bowl" -> Chime.bowl(196.0, 0.5)
+            "kalimba" -> Chime.kalimbaRun()
+            "vibe" -> Haptic.done(ctx)
+        }
+    }
 
     val customs = remember { mutableStateListOf<Tech>().apply { addAll(loadCustom(store)) } }
     var editCustom by remember { mutableStateOf<Tech?>(null) }
     var newCustom by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { Chime.warm(196.0, 146.83); Chime.warmPiano(261.63, 0.3, 4.5) }
+    LaunchedEffect(klang) {
+        when (klang) {
+            "piano" -> { Chime.warm(196.0, 146.83); Chime.warmPiano(261.63, 0.3, 4.5) }
+            "bowl" -> Chime.warmBowl(392.0 to 0.55, 329.63 to 0.32, 293.66 to 0.55)
+            "kalimba" -> Chime.warmKalimba(392.0 to 0.6, 329.63 to 0.35, 293.66 to 0.6)
+        }
+    }
 
     val view = LocalView.current
     DisposableEffect(running) {
@@ -152,137 +224,278 @@ fun BreathScreen() {
 
     LaunchedEffect(running) {
         if (!running) {
-            label = if (done) "Fertig" else "Bereit"
-            done = false
             scale.animateTo(SMALL, tween(1600, easing = Ease))
             return@LaunchedEffect
         }
         // Dauer läuft unsichtbar im Hintergrund; es werden nur ganze Zyklen geatmet,
-        // die Übung endet nach dem letzten Ausatmen.
+        // die Übung endet nach dem letzten Ausatmen. Tempo verkürzt/verlängert alle Phasen.
+        val f = (100 - tempo) / 100.0
         val phs = phases()
-        val cycleSec = phs.sumOf { it.sec }.coerceAtLeast(1)
-        val cycles = ((minutes * 60 + cycleSec - 1) / cycleSec).coerceAtLeast(1)
+        val cycleMs = phs.sumOf { (it.sec * 1000 * f).toLong() }.coerceAtLeast(1L)
+        val cycles = ((minutes * 60_000L + cycleMs - 1) / cycleMs).toInt().coerceAtLeast(1)
         for (c in 1..cycles) {
             for (ph in phs) {
                 if (c == cycles && ph.key == "pause") break
-                label = ph.label
-                if (sound) {
-                    if (ph.key == "hold" || ph.key == "pause") Chime.piano(ph.freq, 0.3, 4.5)
-                    else Chime.piano(ph.freq, 0.6)
-                }
-                val anim = launch { scale.animateTo(ph.to, tween(ph.sec * 1000, easing = Ease)) }
-                delay(ph.sec * 1000L)
+                cue(ph.key)
+                val ms = (ph.sec * 1000 * f).toLong()
+                val anim = launch { scale.animateTo(ph.to, tween(ms.toInt(), easing = Ease)) }
+                delay(ms)
                 anim.cancel()
             }
         }
         delay(700)
-        if (sound) Chime.closing()
-        done = true
+        closing()
         running = false
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(top = 14.dp, bottom = 12.dp)
-    ) {
-        Row(Modifier.padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Breath", color = p.ink, fontSize = 30.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            CircleButton(
-                if (sound) Ic.speaker else Ic.speakerOff,
-                { sound = !sound; store.putBool("brSound", sound) },
-                size = 40.dp, bg = p.bg, fg = if (sound) p.ink else p.muted, iconSize = 21.dp,
-                desc = if (sound) "Ton aus" else "Ton an"
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(
+    val allTechs = TECHS + customs
+    val cur = allTechs.firstOrNull { it.id == tech }
+    val curName = cur?.name ?: "Eigener"
+    fun select(t: Tech) {
+        tech = t.id
+        inh = t.v[0]; hold = t.v[1]; exh = t.v[2]; pause = t.v[3]
+        persist()
+    }
+    val quiet = remember { MutableInteractionSource() }
+
+    Box(Modifier.fillMaxSize()) {
+        Column(
             Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .fillMaxSize()
+                .padding(top = 10.dp, bottom = 12.dp)
         ) {
-            TECHS.forEach { t ->
-                TechChip(t.name, tech == t.id, onTap = {
-                    if (!running) {
-                        tech = t.id
-                        inh = t.v[0]; hold = t.v[1]; exh = t.v[2]; pause = t.v[3]
-                        persist()
-                    }
-                }, onLong = { if (!running) infoTech = t })
-            }
-            customs.forEach { t ->
-                TechChip(t.name, tech == t.id, onTap = {
-                    tech = t.id
-                    inh = t.v[0]; hold = t.v[1]; exh = t.v[2]; pause = t.v[3]
-                    persist()
-                }, onLong = { if (!running) editCustom = t })
-            }
-            AddChip { if (!running) newCustom = true }
-        }
-        Text(
-            "Lange drücken für Rhythmus und Dauer", color = p.muted, fontSize = 11.sp,
-            modifier = Modifier.padding(start = 20.dp, top = 6.dp)
-        )
-        BoxWithConstraints(
-            Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            contentAlignment = Alignment.Center
-        ) {
-            val d = minOf(maxWidth - 76.dp, maxHeight - 24.dp, 300.dp)
-            Box(Modifier.size(d), contentAlignment = Alignment.Center) {
-                // Sanfte Flächen statt Linien: außen ein heller Hof (ganz eingeatmet),
-                // innen eine leicht abgesetzte Scheibe (ganz ausgeatmet).
-                val halo = p.fill.copy(alpha = if (p.dark) 0.13f else 0.16f)
-                val core = if (p.dark) Color.Black.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.18f)
-                Canvas(Modifier.fillMaxSize()) {
-                    drawCircle(color = halo, radius = size.minDimension / 2)
+            Row(
+                Modifier
+                    .padding(start = 16.dp, end = 8.dp)
+                    .height(48.dp)
+                    .graphicsLayer { alpha = ctrlAlpha },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (techOpen) p.track else Color.Transparent)
+                        .border(1.dp, p.line, RoundedCornerShape(50))
+                        .clickable(enabled = !running) { menuOpen = false; techOpen = !techOpen }
+                        .padding(start = 14.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        curName, color = if (running) p.sub else p.ink, fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold, maxLines = 1
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    TwIcon(Ic.chevDown, tint = p.sub, size = 18.dp)
                 }
+                Spacer(Modifier.weight(1f))
+                CircleButton(
+                    if (running) Ic.pause else Ic.play,
+                    { techOpen = false; menuOpen = false; running = !running; if (running) awake = 0 },
+                    size = 42.dp, bg = Color.Transparent, fg = p.ink, iconSize = 20.dp,
+                    desc = if (running) "Pause" else "Start"
+                )
+                CircleButton(
+                    if (klang == "none") Ic.speakerOff else Ic.speaker,
+                    {
+                        if (klang == "none") setKlang(store.getString("brKlangLast") ?: "piano")
+                        else setKlang("none")
+                        if (running) awake++
+                    },
+                    size = 42.dp, bg = Color.Transparent, fg = if (klang == "none") p.muted else p.ink, iconSize = 21.dp,
+                    desc = if (klang == "none") "Ton an" else "Ton aus"
+                )
+                CircleButton(
+                    Ic.dots, { if (!running) { techOpen = false; menuOpen = !menuOpen } },
+                    size = 42.dp, bg = Color.Transparent, fg = if (running) p.muted else p.ink, iconSize = 21.dp,
+                    desc = "Einstellungen"
+                )
+            }
+            BoxWithConstraints(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                val d = minOf(maxWidth - 76.dp, maxHeight - 24.dp, 300.dp)
                 Box(
                     Modifier
-                        .fillMaxSize(BALL)
-                        .graphicsLayer {
-                            scaleX = scale.value
-                            scaleY = scale.value
-                        }
+                        .size(d)
                         .clip(CircleShape)
-                        .background(p.fill)
-                )
-                Canvas(Modifier.fillMaxSize()) {
-                    drawCircle(color = core, radius = size.minDimension / 2 * BALL * SMALL)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(label, color = p.onFill, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                        .clickable(interactionSource = quiet, indication = null) {
+                            if (!running) { techOpen = false; menuOpen = false; running = true; awake = 0 }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Sanfte Flächen: außen der Hof (ganz eingeatmet), innen eine leicht abgesetzte Scheibe (ganz ausgeatmet).
+                    val halo = p.fill.copy(alpha = if (p.dark) 0.13f else 0.16f)
+                    val core = if (p.dark) Color.Black.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.18f)
+                    Canvas(Modifier.fillMaxSize()) { drawCircle(color = halo, radius = size.minDimension / 2) }
+                    Box(
+                        Modifier
+                            .fillMaxSize(BALL)
+                            .graphicsLayer {
+                                scaleX = scale.value
+                                scaleY = scale.value
+                            }
+                            .clip(CircleShape)
+                            .background(p.fill)
+                    )
+                    Canvas(Modifier.fillMaxSize()) {
+                        drawCircle(color = core, radius = size.minDimension / 2 * BALL * SMALL)
+                    }
                 }
             }
         }
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 36.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Spacer(Modifier.width(64.dp))
-            CircleButton(
-                if (running) Ic.pause else Ic.play, { running = !running },
-                size = 78.dp, bg = p.fill, fg = p.onFill, iconSize = 30.dp, elevated = true,
-                desc = if (running) "Stopp" else "Start"
+
+        // Während der Übung: jeder Tipp holt erst die Steuerung zurück.
+        if (running && !awakeOn) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clickable(interactionSource = quiet, indication = null) { awake++ }
             )
+        }
+
+        if (techOpen || menuOpen) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clickable(interactionSource = quiet, indication = null) { techOpen = false; menuOpen = false }
+            )
+        }
+
+        if (techOpen) {
             Column(
                 Modifier
-                    .width(64.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable(enabled = !running) { durDialog = true }
-                    .padding(vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(start = 12.dp, end = 12.dp, top = 62.dp)
+                    .fillMaxWidth()
+                    .shadow(14.dp, RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(p.card)
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(8.dp)
             ) {
-                Text("Dauer", color = p.sub, fontSize = 12.sp)
-                Text("$minutes Min.", style = num(17.sp, FontWeight.SemiBold), color = p.ink, maxLines = 1)
+                allTechs.forEach { t ->
+                    val sel = t.id == tech
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (sel) p.track else Color.Transparent)
+                            .clickable { select(t); techOpen = false }
+                            .padding(horizontal = 14.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            t.name, color = p.ink, fontSize = 15.sp,
+                            fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                            modifier = Modifier.weight(1f), maxLines = 1
+                        )
+                        Text(rhythmText(t.v), color = p.muted, fontSize = 13.sp)
+                        Box(Modifier.width(28.dp), contentAlignment = Alignment.CenterEnd) {
+                            if (sel) TwIcon(Ic.check, tint = p.ink, size = 18.dp)
+                        }
+                    }
+                }
+                Divider()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { techOpen = false; newCustom = true }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TwIcon(Ic.plus, tint = p.sub, size = 18.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Eigener Rhythmus", color = p.sub, fontSize = 15.sp)
+                }
             }
         }
+
+        if (menuOpen) {
+            Column(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(start = 12.dp, end = 12.dp, top = 62.dp)
+                    .widthIn(max = 340.dp)
+                    .fillMaxWidth()
+                    .shadow(14.dp, RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(p.card)
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                MenuRow(Ic.clock, "Dauer") {
+                    MiniStepper("$minutes Min.", { setDur(tech, (minutes - 1).coerceAtLeast(1)) }, { setDur(tech, (minutes + 1).coerceAtMost(60)) })
+                }
+                Divider()
+                MenuRow(Ic.note, "Klang") {}
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                androidx.compose.foundation.layout.FlowRow(
+                    Modifier.padding(start = 34.dp, bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    KLANGE.forEach { (id, name) ->
+                        val sel = klang == id
+                        Text(
+                            name, color = if (sel) p.onFill else p.ink, fontSize = 13.sp,
+                            fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(if (sel) p.fill else p.track)
+                                .clickable { setKlang(id); cue("in", id) }
+                                .padding(horizontal = 12.dp, vertical = 7.dp)
+                        )
+                    }
+                }
+                Divider()
+                MenuRow(Ic.pulse, "Rhythmus", onClick = {
+                    menuOpen = false
+                    val c = customs.firstOrNull { it.id == tech }
+                    if (c != null) editCustom = c else infoTech = TECHS.firstOrNull { it.id == tech }
+                }) {
+                    Text("${rhythmText(listOf(inh, hold, exh, pause))}  ›", color = p.sub, fontSize = 14.sp)
+                }
+                Divider()
+                MenuRow(Ic.gauge, "Tempo") {
+                    MiniStepper(
+                        when {
+                            tempo == 0 -> "normal"
+                            tempo > 0 -> "$tempo % schneller"
+                            else -> "${-tempo} % langsamer"
+                        },
+                        { setTempo((tempo - 5).coerceAtLeast(-15)) }, { setTempo((tempo + 5).coerceAtMost(15)) },
+                        labelWidth = 116
+                    )
+                }
+                Divider()
+                MenuRow(Ic.info, "Anleitung", onClick = { menuOpen = false; guideOpen = true }) {
+                    Text("›", color = p.sub, fontSize = 16.sp)
+                }
+            }
+        }
+    }
+
+    if (guideOpen) {
+        AlertDialog(
+            onDismissRequest = { guideOpen = false },
+            containerColor = p.card,
+            title = { Text(curName, color = p.ink) },
+            text = {
+                Column {
+                    Text(breathGuide(tech), color = p.ink, fontSize = 15.sp, lineHeight = 22.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Der Ball wächst beim Einatmen, bleibt beim Halten stehen und wird beim Ausatmen kleiner. " +
+                            "Antippen startet die Übung. Während der Übung holt ein Tipp die Steuerung kurz zurück.",
+                        color = p.sub, fontSize = 13.sp, lineHeight = 19.sp
+                    )
+                }
+            },
+            confirmButton = { TextButton({ guideOpen = false }) { Text("OK", color = p.ink, fontWeight = FontWeight.SemiBold) } }
+        )
     }
 
     if (newCustom || editCustom != null) {
@@ -298,16 +511,13 @@ fun BreathScreen() {
                 if (k >= 0) customs[k] = saved else customs.add(saved)
                 saveCustom(store, customs)
                 setDur(saved.id, m)
-                tech = saved.id
-                inh = saved.v[0]; hold = saved.v[1]; exh = saved.v[2]; pause = saved.v[3]
-                persist()
+                select(saved)
                 newCustom = false; editCustom = null
             },
             onDelete = if (base != null) ({
                 customs.removeAll { it.id == base.id }
                 saveCustom(store, customs)
-                if (tech == base.id) tech = "custom"
-                persist()
+                if (tech == base.id) select(TECHS.first { it.id == "box" })
                 editCustom = null
             }) else null,
             onClose = { newCustom = false; editCustom = null }
@@ -320,17 +530,57 @@ fun BreathScreen() {
             minutes = store.getLong("brDur_${it0.id}", 5L).toInt(),
             onSave = { t, m ->
                 setDur(t.id, m)
-                tech = t.id
-                inh = t.v[0]; hold = t.v[1]; exh = t.v[2]; pause = t.v[3]
-                persist()
+                select(t)
                 infoTech = null
             },
             onDelete = null,
             onClose = { infoTech = null }
         )
     }
-    if (durDialog) {
-        DurationDialog(minutes, onDone = { setDur(tech, it); durDialog = false }, onClose = { durDialog = false })
+}
+
+private val KLANGE = listOf(
+    "none" to "Kein Klang", "piano" to "Klavier", "bowl" to "Klangschale", "kalimba" to "Kalimba", "vibe" to "Vibration"
+)
+
+private fun rhythmText(v: List<Int>) = v.filter { it > 0 }.joinToString(" · ")
+
+private fun breathGuide(id: String): String = when (id) {
+    "478" -> "Durch die Nase 4 Sekunden einatmen, 7 Sekunden die Luft anhalten, 8 Sekunden langsam durch den Mund ausatmen. Beruhigt stark und hilft beim Einschlafen. Wird dir schwindelig, das Tempo etwas schneller stellen."
+    "koh" -> "Gleichmäßig 5 Sekunden ein und 5 Sekunden aus, ohne Pausen – sechs Atemzüge pro Minute. Bringt Herzschlag und Atmung in Einklang. Ideal: dreimal am Tag 5 Minuten."
+    "box" -> "4 Sekunden ein, 4 halten, 4 aus, 4 halten – ruhig durch die Nase. Hilft, unter Stress klar und gelassen zu bleiben."
+    "zwerch" -> "Eine Hand auf den Bauch: Beim Einatmen hebt sich der Bauch, die Brust bleibt ruhig. Dann länger und locker ausatmen. Vertieft die Atmung und entspannt."
+    "lip" -> "Kurz durch die Nase ein, doppelt so lang mit locker gespitzten Lippen aus – als würdest du eine Kerze zum Flackern bringen, ohne sie auszublasen. Erleichtert das Ausatmen bei Atemnot."
+    "copd" -> "3 Sekunden ein, 6 Sekunden langsam aus, am besten mit Lippenbremse. Das lange Ausatmen hält die Atemwege offen und senkt die Atemfrequenz."
+    "relax" -> "4 Sekunden ein, 8 Sekunden aus. Das lange Ausatmen beruhigt den Puls und wirkt entspannend."
+    else -> "Dein eigener Rhythmus. Unter „Rhythmus“ im Menü stellst du die Sekunden für Ein, Halten, Aus und Pause ein."
+}
+
+@Composable
+private fun MenuRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, onClick: (() -> Unit)? = null, trailing: @Composable () -> Unit) {
+    val p = LocalPal.current
+    var m = Modifier
+        .fillMaxWidth()
+        .height(52.dp)
+    if (onClick != null) m = m.clickable(onClick = onClick)
+    Row(m, verticalAlignment = Alignment.CenterVertically) {
+        TwIcon(icon, tint = p.sub, size = 20.dp)
+        Spacer(Modifier.width(14.dp))
+        Text(title, color = p.ink, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        trailing()
+    }
+}
+
+@Composable
+private fun MiniStepper(label: String, onMinus: () -> Unit, onPlus: () -> Unit, labelWidth: Int = 64) {
+    val p = LocalPal.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        CircleButton(Ic.minus, onMinus, size = 30.dp, bg = p.track, iconSize = 15.dp, desc = "weniger")
+        Text(
+            label, color = p.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.width(labelWidth.dp)
+        )
+        CircleButton(Ic.plus, onPlus, size = 30.dp, bg = p.track, iconSize = 15.dp, desc = "mehr")
     }
 }
 

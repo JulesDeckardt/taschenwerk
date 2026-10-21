@@ -193,6 +193,110 @@ object Chime {
         thread(isDaemon = true) { freqs.forEach { pianoSamples(it, 0.6, 7.0); pianoSamples(it, 0.42, 7.0) } }
     }
 
+    /** Leichter Raumhall (Schroeder: 4 Kammfilter + 2 Allpässe), damit es nicht nach Computer klingt. */
+    private fun reverb(x: DoubleArray, mix: Double): DoubleArray {
+        val n = x.size
+        val wet = DoubleArray(n)
+        val combs = arrayOf(1557 to 0.84, 1617 to 0.83, 1491 to 0.82, 1422 to 0.81)
+        for ((d, g) in combs) {
+            val b = DoubleArray(n)
+            for (i in 0 until n) {
+                b[i] = x[i] + (if (i >= d) g * b[i - d] else 0.0)
+                wet[i] += b[i] * 0.25
+            }
+        }
+        var y = wet
+        for ((d, g) in arrayOf(225 to 0.5, 556 to 0.5)) {
+            val z = DoubleArray(n)
+            for (i in 0 until n) {
+                val xd = if (i >= d) y[i - d] else 0.0
+                val zd = if (i >= d) z[i - d] else 0.0
+                z[i] = -g * y[i] + xd + g * zd
+            }
+            y = z
+        }
+        return DoubleArray(n) { x[it] * (1 - mix) + y[it] * mix }
+    }
+
+    private fun normalize(s: DoubleArray, vol: Double): ShortArray {
+        var peak = 1e-9
+        s.forEach { if (abs(it) > peak) peak = abs(it) }
+        return ShortArray(s.size) { (s[it] / peak * vol * 32767).toInt().coerceIn(-32767, 32767).toShort() }
+    }
+
+    /**
+     * Tibetische Klangschale („Bim“): unharmonische Eigenschwingungen (1 : 2,71 : 5,06 : 8,2),
+     * jede als leicht verstimmtes Paar, das schwebt („wah-wah“), weicher Klöppel, langer Nachklang.
+     */
+    private fun bowlSamples(freq: Double, vol: Double): ShortArray = cache.getOrPut("bowl$freq/$vol") {
+        val dur = 9.0
+        val n = (SR * dur).toInt()
+        val s = DoubleArray(n)
+        val ratios = doubleArrayOf(1.0, 2.71, 5.06, 8.2)
+        val amps = doubleArrayOf(1.0, 0.45, 0.18, 0.07)
+        val taus = doubleArrayOf(7.0, 4.5, 2.6, 1.4)
+        val beats = doubleArrayOf(0.9, 1.6, 2.3, 3.1)
+        val rnd = java.util.Random(3)
+        var lp = 0.0
+        for (i in 0 until n) {
+            val t = i.toDouble() / SR
+            var v = 0.0
+            for (k in ratios.indices) {
+                val f = freq * ratios[k]
+                v += amps[k] * exp(-t / taus[k]) * (sin(2 * PI * f * t) + 0.8 * sin(2 * PI * (f + beats[k]) * t + 0.7)) / 1.8
+            }
+            // Anschlag mit dem Filzklöppel: kurzes, gedämpftes Rauschen
+            if (t < 0.05) {
+                lp += ((rnd.nextGaussian() * exp(-t / 0.004) * 0.08) - lp) * 0.15
+                v += lp
+            }
+            val a = (t / 0.006).coerceIn(0.0, 1.0).let { it * it * (3 - 2 * it) }
+            val fade = ((dur - t) / 1.0).coerceIn(0.0, 1.0)
+            s[i] = v * a * fade
+        }
+        normalize(reverb(s, 0.22), vol)
+    }
+
+    /** Kalimba (Daumenklavier): gezupfte Metallzunge auf Holz – kurz, weich, mit leisem „Tock“. */
+    private fun kalimbaSamples(freq: Double, vol: Double): ShortArray = cache.getOrPut("kal$freq/$vol") {
+        val dur = 3.2
+        val n = (SR * dur).toInt()
+        val s = DoubleArray(n)
+        val rnd = java.util.Random(5)
+        var lp = 0.0
+        for (i in 0 until n) {
+            val t = i.toDouble() / SR
+            var v = exp(-t / 1.1) * sin(2 * PI * freq * t) +
+                0.12 * exp(-t / 0.35) * sin(2 * PI * 2 * freq * t) +
+                0.22 * exp(-t / 0.09) * sin(2 * PI * 5.93 * freq * t) +
+                0.08 * exp(-t / 0.05) * sin(2 * PI * 13.4 * freq * t)
+            if (t < 0.06) {
+                lp += ((rnd.nextGaussian() * exp(-t / 0.006) * 0.25) - lp) * 0.05
+                v += lp
+            }
+            val a = (t / 0.003).coerceIn(0.0, 1.0)
+            val fade = ((dur - t) / 0.6).coerceIn(0.0, 1.0)
+            s[i] = v * a * fade
+        }
+        normalize(reverb(s, 0.18), vol)
+    }
+
+    fun bowl(freq: Double, vol: Double = 0.55) { thread(isDaemon = true) { out(bowlSamples(freq, vol)) } }
+    fun kalimba(freq: Double, vol: Double = 0.6) { thread(isDaemon = true) { out(kalimbaSamples(freq, vol)) } }
+    /** Ausklang mit der Kalimba: drei weiche, aufsteigende Töne. */
+    fun kalimbaRun() {
+        thread(isDaemon = true) {
+            val notes = doubleArrayOf(293.66, 392.0, 493.88)
+            notes.forEachIndexed { i, f ->
+                out(kalimbaSamples(f, if (i == 2) 0.5 else 0.42))
+                Thread.sleep(380)
+            }
+        }
+    }
+
+    fun warmBowl(vararg f: Pair<Double, Double>) { thread(isDaemon = true) { f.forEach { bowlSamples(it.first, it.second) } } }
+    fun warmKalimba(vararg f: Pair<Double, Double>) { thread(isDaemon = true) { f.forEach { kalimbaSamples(it.first, it.second) } } }
+
     fun warmPiano(freq: Double, vol: Double, dur: Double) {
         thread(isDaemon = true) { pianoSamples(freq, vol, dur) }
     }
@@ -213,4 +317,37 @@ object Beep {
 
     fun short() { runCatching { gen()?.startTone(ToneGenerator.TONE_PROP_BEEP, 120) } }
     fun long() { runCatching { gen()?.startTone(ToneGenerator.TONE_PROP_BEEP2, 450) } }
+}
+
+/** Sanfte Vibrationsmuster für die Atemübung ohne Ton. */
+object Haptic {
+    private fun vib(ctx: android.content.Context): android.os.Vibrator? =
+        if (android.os.Build.VERSION.SDK_INT >= 31)
+            (ctx.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager)?.defaultVibrator
+        else @Suppress("DEPRECATION") (ctx.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator)
+
+    private fun play(ctx: android.content.Context, times: LongArray, amps: IntArray) {
+        runCatching {
+            val v = vib(ctx) ?: return
+            if (!v.hasVibrator()) return
+            val effect = if (v.hasAmplitudeControl()) android.os.VibrationEffect.createWaveform(times, amps, -1)
+            else android.os.VibrationEffect.createWaveform(times, -1)
+            v.vibrate(effect)
+        }
+    }
+
+    /** Einatmen: anschwellend. */
+    fun inhale(ctx: android.content.Context) =
+        play(ctx, longArrayOf(0, 90, 90, 90, 90), intArrayOf(0, 40, 80, 130, 170))
+
+    /** Halten: ein kurzes, leises Antippen. */
+    fun hold(ctx: android.content.Context) = play(ctx, longArrayOf(0, 35), intArrayOf(0, 90))
+
+    /** Ausatmen: abschwellend. */
+    fun exhale(ctx: android.content.Context) =
+        play(ctx, longArrayOf(0, 90, 90, 90, 90), intArrayOf(0, 170, 130, 80, 40))
+
+    /** Ende: zwei weiche Pulse. */
+    fun done(ctx: android.content.Context) =
+        play(ctx, longArrayOf(0, 160, 220, 160), intArrayOf(0, 110, 0, 110))
 }
