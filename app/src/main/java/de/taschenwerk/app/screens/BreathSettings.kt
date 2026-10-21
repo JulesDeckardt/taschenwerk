@@ -529,7 +529,7 @@ fun BreathScreen() {
 /** Tonhöhen je Klang: Einatmen, Halten, Ausatmen – im Zweifel tiefer. */
 private val TONES = mapOf(
     "piano" to doubleArrayOf(196.0, 261.63, 146.83),
-    "bowl" to doubleArrayOf(349.23, 293.66, 261.63),
+    "bowl" to doubleArrayOf(311.13, 261.63, 233.08),
     "crystal" to doubleArrayOf(261.63, 220.0, 196.0),
     "gong" to doubleArrayOf(174.61, 146.83, 130.81),
     "kalimba" to doubleArrayOf(349.23, 293.66, 261.63)

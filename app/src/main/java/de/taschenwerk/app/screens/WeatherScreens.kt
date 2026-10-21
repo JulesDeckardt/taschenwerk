@@ -326,27 +326,38 @@ private fun Forecast(
             centeredDeg(low), style = num(13.sp, FontWeight.Normal), color = p.sub,
             maxLines = 1, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
         )
-        if (sunH != null) {
-            Row(
-                Modifier.padding(top = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+        // Sonne und Regen als kleiner Block: Symbole stehen genau übereinander, Zahlen beginnen bündig daneben.
+        // Der Block wird als Ganzes zentriert – so verrutscht nichts, egal ob „0 %“ oder „100 %“.
+        if (sunH != null || rainProb != null) {
+            Column(
+                Modifier
+                    .padding(top = 2.dp)
+                    .width(androidx.compose.foundation.layout.IntrinsicSize.Max),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                TwIcon(Ic.sun, size = 12.dp, tint = p.accent)
-                Text(
-                    "${sunHours(sunH)} h", style = num(12.sp, FontWeight.SemiBold), color = p.accent,
-                    maxLines = 1, modifier = Modifier.padding(start = 3.dp)
-                )
-            }
-        }
-        if (rainProb != null) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                TwIcon(Ic.droplet, size = 11.dp, tint = p.sub)
-                Text(
-                    if (rainProb.isNaN()) "–" else "${rainProb.roundToInt()} %",
-                    style = num(12.sp, FontWeight.Medium), color = p.sub,
-                    maxLines = 1, modifier = Modifier.padding(start = 3.dp)
-                )
+                if (sunH != null) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(13.dp), contentAlignment = Alignment.Center) {
+                            TwIcon(Ic.sun, size = 12.dp, tint = p.accent)
+                        }
+                        Text(
+                            "${sunHours(sunH)} h", style = num(12.sp, FontWeight.SemiBold), color = p.accent,
+                            maxLines = 1, modifier = Modifier.padding(start = 3.dp)
+                        )
+                    }
+                }
+                if (rainProb != null) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(13.dp), contentAlignment = Alignment.Center) {
+                            TwIcon(Ic.droplet, size = 11.dp, tint = p.sub)
+                        }
+                        Text(
+                            if (rainProb.isNaN()) "–" else "${rainProb.roundToInt()} %",
+                            style = num(12.sp, FontWeight.Medium), color = p.sub,
+                            maxLines = 1, modifier = Modifier.padding(start = 3.dp)
+                        )
+                    }
+                }
             }
         }
     }

@@ -266,7 +266,7 @@ object Chime {
                     "kalimba" -> Synth.arpeggio(
                         listOf(261.63, 349.23, 440.0).map { Synth.kalimba(it) }, 0.38, doubleArrayOf(0.8, 0.8, 1.0)
                     )
-                    "bowl" -> Synth.bowl(174.61)
+                    "bowl" -> Synth.bowl(155.56)
                     "crystal" -> Synth.crystal(174.61)
                     else -> Synth.gong(110.0)
                 }
