@@ -290,7 +290,7 @@ fun BreathScreen() {
                 Spacer(Modifier.weight(1f))
                 CircleButton(
                     if (running) Ic.pause else Ic.play,
-                    { techOpen = false; menuOpen = false; running = !running; if (running) awake = 0 },
+                    { techOpen = false; menuOpen = false; running = !running; if (running) awakeOn = false },
                     size = 42.dp, bg = Color.Transparent, fg = p.ink, iconSize = 20.dp,
                     desc = if (running) "Pause" else "Start"
                 )
@@ -322,7 +322,7 @@ fun BreathScreen() {
                         .size(d)
                         .clip(CircleShape)
                         .clickable(interactionSource = quiet, indication = null) {
-                            if (!running) { techOpen = false; menuOpen = false; running = true; awake = 0 }
+                            if (!running) { techOpen = false; menuOpen = false; running = true; awakeOn = false }
                         },
                     contentAlignment = Alignment.Center
                 ) {
