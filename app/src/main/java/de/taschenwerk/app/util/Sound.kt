@@ -112,19 +112,32 @@ object Chime {
     private var soloTrack: AudioTrack? = null
     private val soloLock = Any()
 
+    /** Ausblenden beim Unterbrechen: viele kleine, gleitende Schritte (kein Knacken). */
     private fun fade(t: AudioTrack, ms: Long) {
         runCatching {
-            val steps = 16
+            val steps = 64
             for (i in steps downTo 0) {
-                t.setVolume(i.toFloat() / steps)
-                Thread.sleep(ms / steps)
+                val x = i.toFloat() / steps
+                t.setVolume(x * x)
+                Thread.sleep(maxOf(1L, ms / steps))
             }
             t.stop()
         }
     }
 
     private fun fadeOut(t: AudioTrack) {
-        thread(isDaemon = true) { fade(t, 220) }
+        thread(isDaemon = true) { fade(t, 320) }
+    }
+
+    /** Puffer auf [ms] kürzen und mit weicher Kosinus-Blende enden lassen – direkt im Klang, ohne Lautstärkesprünge. */
+    private fun trimmed(buf: ShortArray, ms: Long): ShortArray {
+        val n = (ms * SR / 1000).toInt().coerceIn(1, buf.size)
+        val fadeN = (minOf(700L, ms / 3) * SR / 1000).toInt().coerceAtLeast(1)
+        return ShortArray(n) { i ->
+            val left = n - 1 - i
+            if (left >= fadeN) buf[i]
+            else (buf[i] * (0.5 - 0.5 * kotlin.math.cos(PI * left / fadeN))).toInt().toShort()
+        }
     }
 
     /** Laufenden Atem-Ton sanft beenden (Pause, Seite verlassen). */
@@ -139,9 +152,10 @@ object Chime {
      * Spielt einen Puffer. [solo]: blendet den vorigen Atem-Ton aus. [maxMs]: spätestens dann
      * sanft ausblenden – so klingt ein Ton nur so lange wie seine Atemphase.
      */
-    private fun out(buf: ShortArray, usage: Int = AudioAttributes.USAGE_MEDIA, solo: Boolean = false, maxMs: Long = 0) {
+    private fun out(full: ShortArray, usage: Int = AudioAttributes.USAGE_MEDIA, solo: Boolean = false, maxMs: Long = 0) {
         thread(isDaemon = true) {
             runCatching {
+                val buf = if (maxMs > 0 && maxMs * SR / 1000 < full.size) trimmed(full, maxMs) else full
                 val track = AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()
@@ -165,12 +179,7 @@ object Chime {
                     soloTrack = track
                 }
                 track.play()
-                val bufMs = buf.size * 1000L / SR
-                if (maxMs in 1 until bufMs) {
-                    val fadeMs = minOf(600L, maxMs / 3)
-                    Thread.sleep(maxMs - fadeMs)
-                    fade(track, fadeMs)
-                } else Thread.sleep(bufMs + 120)
+                Thread.sleep(buf.size * 1000L / SR + 120)
                 if (solo) synchronized(soloLock) { if (soloTrack === track) soloTrack = null }
                 track.release()
             }
@@ -368,17 +377,17 @@ object Chime {
 
     /** Kristall-Klangschale: fast reiner Ton, sehr langes, ruhiges Nachschwingen. */
     private fun crystalSamples(freq: Double, vol: Double) = modal(
-        "cry2", freq, vol, 6.0,
+        "cry3", freq, vol, 6.0,
         doubleArrayOf(1.0, 2.0, 3.0), doubleArrayOf(1.0, 0.04, 0.01), doubleArrayOf(3.2, 2.0, 1.2), doubleArrayOf(0.4, 0.0, 0.0),
-        att = 0.03, clickTau = 0.004, clickAmp = 0.02, clickAlpha = 0.12, rev = 0.18
+        att = 0.04, clickTau = 0.004, clickAmp = 0.0, clickAlpha = 0.12, rev = 0.18
     )
 
     /** Sanfter Gong: tief, Obertöne blühen nach dem Anschlag auf und rauschen lange aus. */
     private fun gongSamples(freq: Double, vol: Double) = modal(
-        "gong2", freq, vol, 6.5,
+        "gong3", freq, vol, 6.5,
         doubleArrayOf(1.0, 1.52, 2.03, 2.71, 3.4, 4.2), doubleArrayOf(1.0, 0.45, 0.3, 0.2, 0.09, 0.04),
         doubleArrayOf(3.6, 3.0, 2.6, 2.2, 1.8, 1.4), doubleArrayOf(0.3, 0.5, 0.7, 0.9, 1.1, 1.4),
-        att = 0.012, clickTau = 0.01, clickAmp = 0.12, clickAlpha = 0.033, rev = 0.22, bloom = 0.25
+        att = 0.03, clickTau = 0.01, clickAmp = 0.0, clickAlpha = 0.033, rev = 0.22, bloom = 0.25
     )
     /** Ausklang mit der Kalimba: drei weiche, aufsteigende Töne. */
     fun kalimbaRun() {
