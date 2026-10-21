@@ -24,6 +24,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
@@ -357,7 +359,7 @@ fun CurrencyCard(store: Store) {
     val bring = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
     var focused by remember { mutableStateOf(false) }
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val imeBottom = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(density)
+    val imeBottom = WindowInsets.ime.getBottom(density)
     LaunchedEffect(focused, imeBottom) {
         if (focused) {
             kotlinx.coroutines.delay(60)
