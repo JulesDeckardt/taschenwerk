@@ -231,7 +231,7 @@ fun BreathScreen() {
                 .fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            val d = minOf(maxWidth - 120.dp, maxHeight - 40.dp, 260.dp)
+            val d = minOf(maxWidth - 76.dp, maxHeight - 24.dp, 300.dp)
             Box(Modifier.size(d), contentAlignment = Alignment.Center) {
                 // Sanfte Flächen statt Linien: außen ein heller Hof (ganz eingeatmet),
                 // innen eine leicht abgesetzte Scheibe (ganz ausgeatmet).
