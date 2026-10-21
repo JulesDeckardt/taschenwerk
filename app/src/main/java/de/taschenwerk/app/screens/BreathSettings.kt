@@ -842,6 +842,25 @@ fun SettingsScreen(nav: Nav) {
 
             AppIconCard()
 
+            Label("Startseite")
+            Card(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
+                var on by remember { mutableStateOf(store.getBool("clock2", false)) }
+                var zone by remember { mutableStateOf(store.getString("clock2Zone") ?: "Europe/Berlin") }
+                RowItem("Zweite Uhr", trailing = { Toggle(on) { on = it; store.putBool("clock2", it) } })
+                if (on) {
+                    (listOf("Europe/Berlin") + store.zones).distinct().forEach { z ->
+                        Divider()
+                        RowItem(cityForZone(z), onClick = { zone = z; store.putString("clock2Zone", z) }, trailing = {
+                            if (z == zone) TwIcon(Ic.check, tint = p.ink, size = 18.dp)
+                        })
+                    }
+                }
+            }
+            Text(
+                "Zeigt die Uhrzeit einer zweiten Stadt klein unter der großen Uhr. Weitere Städte fügst du unter Uhr → Weltzeit hinzu.",
+                color = p.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp)
+            )
+
             Label("Währung")
             Card(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
                 CurrencyPick("Hauptwährung", store.mainCur) { store.applyMainCur(it) }

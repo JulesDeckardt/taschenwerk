@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -128,8 +129,17 @@ fun StartScreen(nav: Nav) {
                         append("${two(now.hour)}:")
                         withStyle(SpanStyle(color = p.accent)) { append(two(now.minute)) }
                     },
-                    style = num(50.sp), color = p.ink
+                    style = num(84.sp).copy(lineHeight = 90.sp), color = p.ink
                 )
+                // Zweite Uhr (Einstellung): klein und grau unter der großen Uhr
+                if (store.getBool("clock2", false)) {
+                    val z = store.getString("clock2Zone") ?: "Europe/Berlin"
+                    val t = runCatching { java.time.ZonedDateTime.now(java.time.ZoneId.of(z)) }.getOrNull()
+                    if (t != null) Text(
+                        "${two(t.hour)}:${two(t.minute)}  ${cityForZone(z)}",
+                        color = p.sub, fontSize = 15.sp, style = num(15.sp, FontWeight.Normal)
+                    )
+                }
             }
             CircleButton(Ic.more, { nav.overlay = Overlay.Settings }, size = 44.dp, bg = p.bg, desc = "Einstellungen")
         }
@@ -137,10 +147,11 @@ fun StartScreen(nav: Nav) {
         // Wetter
         val w = WeatherRepo.home
         Card(
+            modifier = Modifier.heightIn(min = CARD_MIN),
             onClick = { nav.go(Tab.WETTER) },
-            padding = PaddingValues(horizontal = 18.dp, vertical = 14.dp)
+            padding = PaddingValues(horizontal = 18.dp, vertical = 12.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.heightIn(min = CARD_MIN - 24.dp), verticalAlignment = Alignment.CenterVertically) {
                 TwIcon(
                     if (w != null) w.look.icon else Ic.cloudSun, size = 40.dp,
                     tint = if (w != null) weatherTint(w.look.tint, w.day) else p.fill
@@ -204,52 +215,32 @@ fun StartScreen(nav: Nav) {
             }
         }
 
-        // Wecker – oben und am prominentesten
-        Card(padding = PaddingValues(horizontal = 18.dp, vertical = 14.dp)) {
-            val next = store.alarms.filter { it.enabled }.minByOrNull { AlarmScheduler.nextTrigger(it).toEpochSecond() }
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 2.dp)) {
-                Text("Wecker", color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                Text(
-                    "Alle", color = p.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { nav.go(Tab.UHR, 0) }
-                        .padding(4.dp)
-                )
-            }
-            // Nächster aktiver Wecker zuerst und groß, danach bis zu zwei weitere kompakt
-            val ordered = (listOfNotNull(next) + store.alarms.filter { it.id != next?.id }).take(3)
-            if (ordered.isEmpty()) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(72.dp)
-                        .clickable { nav.overlay = Overlay.EditAlarm(null) },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Noch kein Wecker – tippen zum Anlegen", color = p.sub, fontSize = 15.sp)
-                }
-            }
-            ordered.forEachIndexed { i, a ->
-                if (i > 0) Divider()
-                val big = i == 0
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(if (big) 80.dp else 56.dp)
-                        .clickable { nav.overlay = Overlay.EditAlarm(a.id) },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+        // Wecker – kompakt: nur der nächste Wecker, Tippen öffnet alle
+        val next = store.alarms.filter { it.enabled }.minByOrNull { AlarmScheduler.nextTrigger(it).toEpochSecond() }
+            ?: store.alarms.firstOrNull()
+        Card(
+            modifier = Modifier.heightIn(min = CARD_MIN),
+            padding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+            onClick = { if (next == null) nav.overlay = Overlay.EditAlarm(null) else nav.go(Tab.UHR, 1) }
+        ) {
+            Row(Modifier.heightIn(min = CARD_MIN - 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (next == null) {
                     Column(Modifier.weight(1f)) {
-                        Text(
-                            "${two(a.hour)}:${two(a.minute)}",
-                            style = num(if (big) 44.sp else 26.sp, FontWeight.SemiBold),
-                            color = if (a.enabled) p.ink else p.muted
-                        )
-                        Text(alarmSubtitle(a), color = p.sub, fontSize = if (big) 14.sp else 13.sp, maxLines = 1)
+                        Text("Wecker", color = p.sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Noch kein Wecker – tippen zum Anlegen", color = p.ink, fontSize = 15.sp)
                     }
-                    Toggle(a.enabled) { on ->
-                        val na = a.copy(enabled = on)
+                } else {
+                    Column(Modifier.weight(1f)) {
+                        Text("Wecker", color = p.sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(
+                            "${two(next.hour)}:${two(next.minute)}",
+                            style = num(32.sp, FontWeight.SemiBold).copy(lineHeight = 36.sp),
+                            color = if (next.enabled) p.ink else p.muted
+                        )
+                        Text(alarmSubtitle(next), color = p.sub, fontSize = 13.sp, maxLines = 1)
+                    }
+                    Toggle(next.enabled) { on ->
+                        val na = next.copy(enabled = on)
                         store.upsertAlarm(na)
                         AlarmScheduler.schedule(ctx, na)
                     }
@@ -280,6 +271,9 @@ fun StartScreen(nav: Nav) {
 }
 
 /** Sonnenstunden | Taupunkt in einer Zeile; passt es nicht, rutscht der Taupunkt in eine eigene Zeile. */
+/** Gemeinsame Mindesthöhe der Kacheln Wetter, Wecker und Währung. */
+private val CARD_MIN = 92.dp
+
 @Composable
 private fun SunDewLine(sun: @Composable () -> Unit, sep: @Composable () -> Unit, dew: @Composable () -> Unit) {
     Layout(contents = listOf(sun, sep, dew)) { (sunM, sepM, dewM), c ->
@@ -381,22 +375,11 @@ fun CurrencyCard(store: Store) {
 
     Card(
         modifier = Modifier
+            .heightIn(min = CARD_MIN)
             .bringIntoViewRequester(bring)
             .onFocusChanged { focused = it.hasFocus },
-        padding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+        padding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Währung", color = p.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            val one = Rates.convert(1.0, to, from)
-            Text(
-                when {
-                    Rates.loading && rates.isEmpty() -> "Kurse werden geladen …"
-                    one != null -> "1 $to = ${fmt(one, 4)} $from"
-                    else -> Rates.error ?: "Keine Kurse"
-                },
-                color = p.sub, fontSize = 12.sp
-            )
-        }
         CurrencyRow(from, shownA, { store.applyMainCur(it) }) {
             aText = it; editedTop = true
         }
@@ -414,12 +397,12 @@ private fun CurrencyRow(code: String, value: String, onPick: (String) -> Unit, a
     Row(
         Modifier
             .fillMaxWidth()
-            .height(48.dp), verticalAlignment = Alignment.CenterVertically
+            .height(39.dp), verticalAlignment = Alignment.CenterVertically
     ) {
         Box {
             Row(
                 Modifier
-                    .size(width = 76.dp, height = 34.dp)
+                    .size(width = 72.dp, height = 30.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(p.track)
                     .clickable { open = true },
@@ -440,7 +423,7 @@ private fun CurrencyRow(code: String, value: String, onPick: (String) -> Unit, a
         NumberField(
             value = value, onChange = onValue,
             modifier = Modifier.weight(1f),
-            style = num(22.sp, FontWeight.SemiBold), align = TextAlign.End, boxed = false,
+            style = num(21.sp, FontWeight.SemiBold), align = TextAlign.End, boxed = false,
             color = if (accent) p.accent else p.ink
         )
     }

@@ -95,13 +95,13 @@ import java.util.Locale
 fun ClockTab(nav: Nav) {
     Column(Modifier.fillMaxSize()) {
         Segmented(
-            listOf("Wecker", "Weltzeit", "Stoppuhr", "Timer"), nav.uhrSub, { nav.uhrSub = it },
+            listOf("Weltzeit", "Wecker", "Stoppuhr", "Timer"), nav.uhrSub, { nav.uhrSub = it },
             Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
         )
         Box(Modifier.weight(1f)) {
             when (nav.uhrSub) {
-                0 -> AlarmsPage(nav)
-                1 -> WorldPage()
+                0 -> WorldPage()
+                1 -> AlarmsPage(nav)
                 2 -> StopwatchPage()
                 else -> TimerPage(nav)
             }
