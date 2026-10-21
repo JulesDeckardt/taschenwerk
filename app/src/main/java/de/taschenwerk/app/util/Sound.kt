@@ -112,19 +112,34 @@ object Chime {
     private var soloTrack: AudioTrack? = null
     private val soloLock = Any()
 
-    private fun fadeOut(t: AudioTrack) {
-        thread(isDaemon = true) {
-            runCatching {
-                for (i in 12 downTo 0) {
-                    t.setVolume(i / 12f)
-                    Thread.sleep(14)
-                }
-                t.stop()
+    private fun fade(t: AudioTrack, ms: Long) {
+        runCatching {
+            val steps = 16
+            for (i in steps downTo 0) {
+                t.setVolume(i.toFloat() / steps)
+                Thread.sleep(ms / steps)
             }
+            t.stop()
         }
     }
 
-    private fun out(buf: ShortArray, usage: Int = AudioAttributes.USAGE_MEDIA, solo: Boolean = false) {
+    private fun fadeOut(t: AudioTrack) {
+        thread(isDaemon = true) { fade(t, 220) }
+    }
+
+    /** Laufenden Atem-Ton sanft beenden (Pause, Seite verlassen). */
+    fun stopSolo() {
+        synchronized(soloLock) {
+            soloTrack?.let { fadeOut(it) }
+            soloTrack = null
+        }
+    }
+
+    /**
+     * Spielt einen Puffer. [solo]: blendet den vorigen Atem-Ton aus. [maxMs]: spätestens dann
+     * sanft ausblenden – so klingt ein Ton nur so lange wie seine Atemphase.
+     */
+    private fun out(buf: ShortArray, usage: Int = AudioAttributes.USAGE_MEDIA, solo: Boolean = false, maxMs: Long = 0) {
         thread(isDaemon = true) {
             runCatching {
                 val track = AudioTrack.Builder()
@@ -150,7 +165,12 @@ object Chime {
                     soloTrack = track
                 }
                 track.play()
-                Thread.sleep(buf.size * 1000L / SR + 120)
+                val bufMs = buf.size * 1000L / SR
+                if (maxMs in 1 until bufMs) {
+                    val fadeMs = minOf(600L, maxMs / 3)
+                    Thread.sleep(maxMs - fadeMs)
+                    fade(track, fadeMs)
+                } else Thread.sleep(bufMs + 120)
                 if (solo) synchronized(soloLock) { if (soloTrack === track) soloTrack = null }
                 track.release()
             }
@@ -159,8 +179,8 @@ object Chime {
 
     fun play(freq: Double, vol: Double = 0.5, dur: Double = 1.6) = out(samples(freq, vol, dur))
 
-    fun piano(freq: Double, vol: Double = 0.6, dur: Double = 7.0, solo: Boolean = false) =
-        thread(isDaemon = true) { out(pianoSamples(freq, vol, dur), solo = solo) }
+    fun piano(freq: Double, vol: Double = 0.6, dur: Double = 7.0, solo: Boolean = false, maxMs: Long = 0) =
+        thread(isDaemon = true) { out(pianoSamples(freq, vol, dur), solo = solo, maxMs = maxMs) }
 
     /** Entspanntes Abschluss-Motiv „dim, dim, dim, diiim“ (aufsteigend, weich ausklingend). */
     fun finish(vol: Double = 0.5) {
@@ -304,10 +324,10 @@ object Chime {
         normalize(reverb(s, 0.18), vol)
     }
 
-    fun bowl(freq: Double, vol: Double = 0.55, solo: Boolean = false) { thread(isDaemon = true) { out(bowlSamples(freq, vol), solo = solo) } }
-    fun kalimba(freq: Double, vol: Double = 0.6, solo: Boolean = false) { thread(isDaemon = true) { out(kalimbaSamples(freq, vol), solo = solo) } }
-    fun crystal(freq: Double, vol: Double = 0.55, solo: Boolean = false) { thread(isDaemon = true) { out(crystalSamples(freq, vol), solo = solo) } }
-    fun gong(freq: Double, vol: Double = 0.6, solo: Boolean = false) { thread(isDaemon = true) { out(gongSamples(freq, vol), solo = solo) } }
+    fun bowl(freq: Double, vol: Double = 0.55, solo: Boolean = false, maxMs: Long = 0) { thread(isDaemon = true) { out(bowlSamples(freq, vol), solo = solo, maxMs = maxMs) } }
+    fun kalimba(freq: Double, vol: Double = 0.6, solo: Boolean = false, maxMs: Long = 0) { thread(isDaemon = true) { out(kalimbaSamples(freq, vol), solo = solo, maxMs = maxMs) } }
+    fun crystal(freq: Double, vol: Double = 0.55, solo: Boolean = false, maxMs: Long = 0) { thread(isDaemon = true) { out(crystalSamples(freq, vol), solo = solo, maxMs = maxMs) } }
+    fun gong(freq: Double, vol: Double = 0.6, solo: Boolean = false, maxMs: Long = 0) { thread(isDaemon = true) { out(gongSamples(freq, vol), solo = solo, maxMs = maxMs) } }
     fun warmCrystal(vararg f: Pair<Double, Double>) { thread(isDaemon = true) { f.forEach { crystalSamples(it.first, it.second) } } }
     fun warmGong(vararg f: Pair<Double, Double>) { thread(isDaemon = true) { f.forEach { gongSamples(it.first, it.second) } } }
 
@@ -348,17 +368,17 @@ object Chime {
 
     /** Kristall-Klangschale: fast reiner Ton, sehr langes, ruhiges Nachschwingen. */
     private fun crystalSamples(freq: Double, vol: Double) = modal(
-        "cry", freq, vol, 11.0,
-        doubleArrayOf(1.0, 2.0, 3.0), doubleArrayOf(1.0, 0.05, 0.015), doubleArrayOf(12.0, 5.0, 2.5), doubleArrayOf(0.4, 0.0, 0.0),
-        att = 0.03, clickTau = 0.004, clickAmp = 0.02, clickAlpha = 0.12, rev = 0.26
+        "cry2", freq, vol, 6.0,
+        doubleArrayOf(1.0, 2.0, 3.0), doubleArrayOf(1.0, 0.04, 0.01), doubleArrayOf(3.2, 2.0, 1.2), doubleArrayOf(0.4, 0.0, 0.0),
+        att = 0.03, clickTau = 0.004, clickAmp = 0.02, clickAlpha = 0.12, rev = 0.18
     )
 
     /** Sanfter Gong: tief, Obertöne blühen nach dem Anschlag auf und rauschen lange aus. */
     private fun gongSamples(freq: Double, vol: Double) = modal(
-        "gong", freq, vol, 11.0,
-        doubleArrayOf(1.0, 1.52, 2.03, 2.71, 3.4, 4.2), doubleArrayOf(1.0, 0.5, 0.35, 0.25, 0.12, 0.06),
-        doubleArrayOf(9.0, 7.0, 6.0, 4.5, 3.5, 2.5), doubleArrayOf(0.3, 0.5, 0.7, 0.9, 1.1, 1.4),
-        att = 0.012, clickTau = 0.01, clickAmp = 0.12, clickAlpha = 0.033, rev = 0.3, bloom = 0.35
+        "gong2", freq, vol, 6.5,
+        doubleArrayOf(1.0, 1.52, 2.03, 2.71, 3.4, 4.2), doubleArrayOf(1.0, 0.45, 0.3, 0.2, 0.09, 0.04),
+        doubleArrayOf(3.6, 3.0, 2.6, 2.2, 1.8, 1.4), doubleArrayOf(0.3, 0.5, 0.7, 0.9, 1.1, 1.4),
+        att = 0.012, clickTau = 0.01, clickAmp = 0.12, clickAlpha = 0.033, rev = 0.22, bloom = 0.25
     )
     /** Ausklang mit der Kalimba: drei weiche, aufsteigende Töne. */
     fun kalimbaRun() {

@@ -125,6 +125,7 @@ fun BreathScreen() {
         store.putString("brKlang", k)
     }
     var running by remember { mutableStateOf(false) }
+    var finished by remember { mutableStateOf(false) }
     var ver by remember { mutableIntStateOf(0) }
     val minutes = remember(tech, ver) { store.getLong("brDur_$tech", 5L).toInt() }
     val tempo = remember(tech, ver) { store.getLong("brTempo_$tech", 0L).toInt() }
@@ -150,7 +151,7 @@ fun BreathScreen() {
         if (showControls) 1f else 0f, tween(if (showControls) 350 else 900), label = "ctrl"
     )
     SideEffect { de.taschenwerk.app.Zen.hide = running && !awakeOn }
-    DisposableEffect(Unit) { onDispose { de.taschenwerk.app.Zen.hide = false } }
+    DisposableEffect(Unit) { onDispose { de.taschenwerk.app.Zen.hide = false; Chime.stopSolo() } }
     val navWake = de.taschenwerk.app.Zen.wake
     LaunchedEffect(navWake) { if (navWake > 0 && running) awake++ }
 
@@ -170,14 +171,15 @@ fun BreathScreen() {
     ).filter { it.sec > 0 }
 
     /** Ton bzw. Vibration für eine Phase im gewählten Klang – immer nur ein Ton zur Zeit, im Zweifel tiefer. */
-    fun cue(key: String, k: String = klang) {
+    fun cue(key: String, k: String = klang, ms: Long = 3000L) {
         val i = when (key) { "in" -> 0; "out" -> 2; else -> 1 }
+        val h = i == 1
         when (k) {
-            "piano" -> Chime.piano(doubleArrayOf(196.0, 261.63, 146.83)[i], if (i == 1) 0.3 else 0.6, if (i == 1) 4.5 else 7.0, solo = true)
-            "bowl" -> Chime.bowl(doubleArrayOf(349.23, 293.66, 261.63)[i], if (i == 1) 0.34 else 0.55, solo = true)
-            "crystal" -> Chime.crystal(doubleArrayOf(293.66, 246.94, 220.0)[i], if (i == 1) 0.36 else 0.55, solo = true)
-            "gong" -> Chime.gong(doubleArrayOf(174.61, 146.83, 130.81)[i], if (i == 1) 0.4 else 0.6, solo = true)
-            "kalimba" -> Chime.kalimba(doubleArrayOf(392.0, 329.63, 293.66)[i], if (i == 1) 0.35 else 0.6, solo = true)
+            "piano" -> Chime.piano(doubleArrayOf(196.0, 261.63, 146.83)[i], if (h) 0.3 else 0.6, if (h) 4.5 else 7.0, solo = true, maxMs = ms)
+            "bowl" -> Chime.bowl(doubleArrayOf(349.23, 293.66, 261.63)[i], if (h) 0.34 else 0.55, solo = true, maxMs = ms)
+            "crystal" -> Chime.crystal(doubleArrayOf(261.63, 220.0, 196.0)[i], if (h) 0.3 else 0.45, solo = true, maxMs = ms)
+            "gong" -> Chime.gong(doubleArrayOf(174.61, 146.83, 130.81)[i], if (h) 0.34 else 0.5, solo = true, maxMs = ms)
+            "kalimba" -> Chime.kalimba(doubleArrayOf(392.0, 329.63, 293.66)[i], if (h) 0.35 else 0.6, solo = true, maxMs = ms)
             "vibe" -> when (i) {
                 0 -> Haptic.inhale(ctx)
                 1 -> Haptic.hold(ctx)
@@ -190,8 +192,8 @@ fun BreathScreen() {
         when (klang) {
             "piano" -> Chime.closing()
             "bowl" -> Chime.bowl(174.61, 0.5, solo = true)
-            "crystal" -> Chime.crystal(196.0, 0.5, solo = true)
-            "gong" -> Chime.gong(110.0, 0.55, solo = true)
+            "crystal" -> Chime.crystal(174.61, 0.42, solo = true, maxMs = 5000)
+            "gong" -> Chime.gong(110.0, 0.48, solo = true, maxMs = 5500)
             "kalimba" -> Chime.kalimbaRun()
             "vibe" -> Haptic.done(ctx)
         }
@@ -205,8 +207,8 @@ fun BreathScreen() {
             "piano" -> { Chime.warm(196.0, 146.83); Chime.warmPiano(261.63, 0.3, 4.5) }
             "bowl" -> Chime.warmBowl(349.23 to 0.55, 293.66 to 0.34, 261.63 to 0.55)
             "kalimba" -> Chime.warmKalimba(392.0 to 0.6, 329.63 to 0.35, 293.66 to 0.6)
-            "crystal" -> Chime.warmCrystal(293.66 to 0.55, 246.94 to 0.36, 220.0 to 0.55)
-            "gong" -> Chime.warmGong(174.61 to 0.6, 146.83 to 0.4, 130.81 to 0.6)
+            "crystal" -> Chime.warmCrystal(261.63 to 0.45, 220.0 to 0.3, 196.0 to 0.45)
+            "gong" -> Chime.warmGong(174.61 to 0.5, 146.83 to 0.34, 130.81 to 0.5)
         }
     }
 
@@ -218,6 +220,8 @@ fun BreathScreen() {
 
     LaunchedEffect(running) {
         if (!running) {
+            if (!finished) Chime.stopSolo()
+            finished = false
             scale.animateTo(SMALL, tween(1600, easing = Ease))
             return@LaunchedEffect
         }
@@ -230,8 +234,8 @@ fun BreathScreen() {
         for (c in 1..cycles) {
             for (ph in phs) {
                 if (c == cycles && ph.key == "pause") break
-                cue(ph.key)
                 val ms = (ph.sec * 1000 * f).toLong()
+                cue(ph.key, ms = ms)
                 val anim = launch { scale.animateTo(ph.to, tween(ms.toInt(), easing = Ease)) }
                 delay(ms)
                 anim.cancel()
@@ -239,6 +243,7 @@ fun BreathScreen() {
         }
         delay(700)
         closing()
+        finished = true
         running = false
     }
 
@@ -439,7 +444,7 @@ fun BreathScreen() {
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
                                 .background(if (sel) p.fill else p.track)
-                                .clickable { setKlang(id); cue("in", id) }
+                                .clickable { setKlang(id); cue("in", id, 2500L) }
                                 .padding(horizontal = 12.dp, vertical = 7.dp)
                         )
                     }
