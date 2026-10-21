@@ -179,9 +179,9 @@ fun BreathScreen() {
                 else -> Chime.piano(146.83, 0.6)
             }
             "bowl" -> when {
-                holdLike -> Chime.bowl(329.63, 0.32)
-                key == "in" -> Chime.bowl(392.0, 0.55)
-                else -> Chime.bowl(293.66, 0.55)
+                holdLike -> Chime.bowl(293.66, 0.34)
+                key == "in" -> Chime.bowl(349.23, 0.55)
+                else -> Chime.bowl(261.63, 0.55)
             }
             "kalimba" -> when {
                 holdLike -> Chime.kalimba(329.63, 0.35)
@@ -199,7 +199,7 @@ fun BreathScreen() {
     fun closing() {
         when (klang) {
             "piano" -> Chime.closing()
-            "bowl" -> Chime.bowl(196.0, 0.5)
+            "bowl" -> Chime.bowl(174.61, 0.5)
             "kalimba" -> Chime.kalimbaRun()
             "vibe" -> Haptic.done(ctx)
         }
@@ -211,7 +211,7 @@ fun BreathScreen() {
     LaunchedEffect(klang) {
         when (klang) {
             "piano" -> { Chime.warm(196.0, 146.83); Chime.warmPiano(261.63, 0.3, 4.5) }
-            "bowl" -> Chime.warmBowl(392.0 to 0.55, 329.63 to 0.32, 293.66 to 0.55)
+            "bowl" -> Chime.warmBowl(349.23 to 0.55, 293.66 to 0.34, 261.63 to 0.55)
             "kalimba" -> Chime.warmKalimba(392.0 to 0.6, 329.63 to 0.35, 293.66 to 0.6)
         }
     }

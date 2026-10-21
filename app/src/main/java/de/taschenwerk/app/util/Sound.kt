@@ -229,13 +229,14 @@ object Chime {
      * jede als leicht verstimmtes Paar, das schwebt („wah-wah“), weicher Klöppel, langer Nachklang.
      */
     private fun bowlSamples(freq: Double, vol: Double): ShortArray = cache.getOrPut("bowl$freq/$vol") {
-        val dur = 9.0
+        val dur = 10.0
         val n = (SR * dur).toInt()
         val s = DoubleArray(n)
         val ratios = doubleArrayOf(1.0, 2.71, 5.06, 8.2)
-        val amps = doubleArrayOf(1.0, 0.45, 0.18, 0.07)
-        val taus = doubleArrayOf(7.0, 4.5, 2.6, 1.4)
-        val beats = doubleArrayOf(0.9, 1.6, 2.3, 3.1)
+        // große Schale: obere Teiltöne leiser (weniger schrill), längeres Ausschwingen, ruhigere Schwebung
+        val amps = doubleArrayOf(1.0, 0.34, 0.10, 0.03)
+        val taus = doubleArrayOf(9.0, 5.5, 3.0, 1.6)
+        val beats = doubleArrayOf(0.6, 1.1, 1.7, 2.4)
         val rnd = java.util.Random(3)
         var lp = 0.0
         for (i in 0 until n) {
@@ -247,7 +248,7 @@ object Chime {
             }
             // Anschlag mit dem Filzklöppel: kurzes, gedämpftes Rauschen
             if (t < 0.05) {
-                lp += ((rnd.nextGaussian() * exp(-t / 0.004) * 0.08) - lp) * 0.15
+                lp += ((rnd.nextGaussian() * exp(-t / 0.005) * 0.06) - lp) * 0.08
                 v += lp
             }
             val a = (t / 0.006).coerceIn(0.0, 1.0).let { it * it * (3 - 2 * it) }
