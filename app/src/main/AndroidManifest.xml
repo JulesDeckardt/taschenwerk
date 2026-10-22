@@ -43,7 +43,7 @@
 
         <activity-alias
             android:name=".IconNeon"
-            android:enabled="true"
+            android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_neon"
             android:roundIcon="@mipmap/ic_neon"
@@ -85,7 +85,7 @@
 
         <activity-alias
             android:name=".IconNacht"
-            android:enabled="false"
+            android:enabled="true"
             android:exported="true"
             android:icon="@mipmap/ic_nacht"
             android:roundIcon="@mipmap/ic_nacht"

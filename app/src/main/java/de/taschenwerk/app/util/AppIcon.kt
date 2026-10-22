@@ -7,10 +7,10 @@ import de.taschenwerk.app.R
 
 /** Wählbare App-Symbole. Jedes ist ein activity-alias im Manifest. */
 enum class AppIcon(val alias: String, val label: String, val preview: Int) {
+    NACHT("IconNacht", "Nacht", R.drawable.icon_prev_nacht),
     NEON("IconNeon", "Neon", R.drawable.icon_prev_neon),
     BAUHAUS("IconBauhaus", "Bauhaus", R.drawable.icon_prev_bauhaus),
     P("IconP", "P", R.drawable.icon_prev_p),
-    NACHT("IconNacht", "Nacht", R.drawable.icon_prev_nacht),
     PASTELL("IconPastell", "Pastell", R.drawable.icon_prev_pastell),
     SW("IconSw", "S/W", R.drawable.icon_prev_sw),
     SWINV("IconSwInv", "S/W inv.", R.drawable.icon_prev_swinv);
@@ -23,7 +23,7 @@ enum class AppIcon(val alias: String, val label: String, val preview: Int) {
             entries.forEach {
                 if (pm.getComponentEnabledSetting(it.component(ctx)) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) return it
             }
-            return NEON
+            return NACHT
         }
 
         /** Erst das neue Symbol aktivieren, dann die anderen abschalten, damit nie keins aktiv ist. */
