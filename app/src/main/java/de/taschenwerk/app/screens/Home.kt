@@ -275,8 +275,9 @@ object CalcBridge {
 }
 
 /**
- * Rechner kompakt mit eigener Tastatur (keine Handy-Tastatur, damit die Währung darunter sichtbar bleibt):
- * Ziffern 1–5 / 6–0 in zwei Reihen, darunter ÷ × − + % =. ⌫ lange drücken = alles löschen.
+ * Rechner kompakt mit eigenem Ziffernblock (keine Handy-Tastatur, damit die Währung darunter sichtbar bleibt).
+ * Anzeige wie gewohnt: beim Tippen die Rechnung groß und das Ergebnis klein und grau darunter,
+ * nach „=“ das Ergebnis groß und die Rechnung klein darüber.
  */
 @Composable
 fun CalcTile() {
@@ -284,53 +285,83 @@ fun CalcTile() {
     val store = remember { Store.get(ctx) }
     val p = LocalPal.current
     var expr by remember { mutableStateOf("") }
-    val result = remember(expr) {
-        if (expr.isBlank()) null
-        else runCatching { Expr(expr.replace(',', '.'), true).eval() }.getOrNull()?.takeIf { !it.isNaN() && !it.isInfinite() }
-    }
+    var lastExpr by remember { mutableStateOf("") }
+    var justEval by remember { mutableStateOf(false) }
+    val ops = "÷×−+"
+    fun eval(e: String) = if (e.isBlank()) null
+    else runCatching { Expr(e.replace(',', '.').replace('−', '-'), true).eval() }.getOrNull()?.takeIf { !it.isNaN() && !it.isInfinite() }
+    val hasOp = expr.drop(1).any { it in ops || it == '%' }
+    val preview = if (!justEval && hasOp) eval(expr) else null
+    val current = if (justEval) eval(expr) else preview ?: eval(expr)
+
     fun press(k: String) {
-        expr = when (k) {
-            "⌫" -> expr.dropLast(1)
-            "=" -> result?.let { fmt(it, 6).replace(".", "") } ?: expr
+        val last = expr.lastOrNull()
+        when (k) {
+            "AC" -> { expr = ""; lastExpr = ""; justEval = false }
+            "⌫" -> { expr = expr.dropLast(1); justEval = false }
+            "=" -> eval(expr)?.let { r ->
+                if (hasOp) {
+                    lastExpr = expr
+                    expr = fmt(r, 8).replace(".", "")
+                    justEval = true
+                }
+            }
+            "÷", "×", "−", "+" -> {
+                justEval = false
+                expr = when {
+                    expr.isEmpty() -> if (k == "−") "−" else ""
+                    last != null && last in ops -> expr.dropLast(1) + k
+                    else -> expr + k
+                }
+            }
+            "%" -> if (last != null && last.isDigit()) { expr += "%"; justEval = false }
+            "," -> {
+                if (justEval) { expr = "0,"; justEval = false; return }
+                val seg = expr.takeLastWhile { it.isDigit() || it == ',' }
+                if (!seg.contains(',')) expr += if (seg.isEmpty()) "0," else ","
+            }
             else -> {
-                val ops = "÷×−+"
-                if (k in ops && expr.isNotEmpty() && expr.last() in ops) expr.dropLast(1) + k
-                else if (k in ops && expr.isEmpty()) expr
-                else (expr + k).take(40)
+                expr = if (justEval) k else (expr + k).take(40)
+                justEval = false
             }
         }
     }
+
     Card(padding = PaddingValues(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Rechner", color = p.sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 2.dp))
-            if (result != null) Text(
+            if (current != null) Text(
                 "→ ${store.mainCur}", color = p.ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
                     .background(p.track)
-                    .clickable { CalcBridge.push = fmt(result, 2) }
+                    .clickable { CalcBridge.push = fmt(current, 2) }
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             )
         }
-        Row(
+        // Anzeige mit fester Höhe, damit beim Wechsel nichts springt
+        Column(
             Modifier
                 .fillMaxWidth()
-                .padding(start = 2.dp, end = 2.dp, top = 6.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.Bottom
+                .height(66.dp)
+                .padding(horizontal = 4.dp),
+            verticalArrangement = Arrangement.Bottom,
+            horizontalAlignment = Alignment.End
         ) {
-            Text(
-                expr.ifEmpty { "0" }, style = num(20.sp, FontWeight.Normal), color = if (expr.isEmpty()) p.muted else p.sub,
-                maxLines = 1, modifier = Modifier.weight(1f)
-            )
-            Text(
-                if (result != null) fmt(result, 6) else "", style = num(30.sp), color = p.ink, maxLines = 1,
-                modifier = Modifier.padding(start = 10.dp)
-            )
+            if (justEval) {
+                Text(lastExpr, style = num(16.sp, FontWeight.Normal), color = p.sub, maxLines = 1)
+                Text(current?.let { fmt(it, 8) } ?: expr, style = num(30.sp), color = p.ink, maxLines = 1)
+            } else {
+                Text(expr.ifEmpty { "0" }, style = num(30.sp), color = if (expr.isEmpty()) p.muted else p.ink, maxLines = 1)
+                Text(preview?.let { fmt(it, 8) } ?: "", style = num(16.sp, FontWeight.Normal), color = p.sub, maxLines = 1)
+            }
         }
+        Spacer(Modifier.height(8.dp))
         val rows = listOf(
-            listOf("1", "2", "3", "4", "5", "⌫"),
-            listOf("6", "7", "8", "9", "0", ","),
-            listOf("÷", "×", "−", "+", "%", "=")
+            listOf("7", "8", "9", "÷", "⌫"),
+            listOf("4", "5", "6", "×", "AC"),
+            listOf("1", "2", "3", "−", "%"),
+            listOf("0", "00", ",", "+", "=")
         )
         rows.forEachIndexed { ri, r ->
             if (ri > 0) Spacer(Modifier.height(6.dp))
@@ -351,19 +382,11 @@ fun CalcTile() {
                     if (digit && p.cardRing != androidx.compose.ui.graphics.Color.Transparent) {
                         m = m.border(1.dp, p.cardRing, shape)
                     }
-                    Box(
-                        m.pointerInput(k) {
-                            detectTapGestures(
-                                onTap = { press(k) },
-                                onLongPress = { if (k == "⌫") expr = "" else press(k) }
-                            )
-                        },
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(m.clickable { press(k) }, contentAlignment = Alignment.Center) {
                         if (k == "⌫") TwIcon(Ic.backspace, size = 20.dp)
                         else Text(
                             k, color = if (k == "=") p.onFill else p.ink,
-                            fontSize = if (digit) 19.sp else 18.sp, fontWeight = FontWeight.SemiBold
+                            fontSize = if (digit) 19.sp else 17.sp, fontWeight = FontWeight.SemiBold
                         )
                     }
                 }

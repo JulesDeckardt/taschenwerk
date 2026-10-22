@@ -94,6 +94,8 @@ object CalcState {
     var sci by mutableStateOf(false)
     var deg by mutableStateOf(true)
     var justEval by mutableStateOf(false)
+    /** Die Rechnung, die zum aktuellen Ergebnis geführt hat (nach „=“ klein darüber). */
+    var lastExpr by mutableStateOf("")
 }
 
 private val OPS = setOf('+', '−', '×', '÷', '^')
@@ -119,6 +121,7 @@ private fun press(k: String) {
         "=" -> {
             val r = Expr.tryEval(e.replace('−', '-'), CalcState.deg)
             if (r != null) {
+                CalcState.lastExpr = e
                 CalcState.expr = plain(r)
                 CalcState.justEval = true
             }
@@ -161,14 +164,17 @@ private fun press(k: String) {
 fun CalcPage() {
     val p = LocalPal.current
     val e = CalcState.expr
-    val preview = if (e.isNotEmpty() && !CalcState.justEval) Expr.tryEval(e.replace('−', '-'), CalcState.deg) else null
+    // Wie gewohnt: beim Tippen die Rechnung groß, das Ergebnis klein und grau darunter;
+    // nach „=“ das Ergebnis groß, die Rechnung klein darüber.
+    val hasOp = e.drop(1).any { it in OPS || it == '%' || it == '(' || it == '!' } || e.any { it.isLetter() || it == '√' || it == 'π' }
+    val preview = if (e.isNotEmpty() && !CalcState.justEval && hasOp) Expr.tryEval(e.replace('−', '-'), CalcState.deg) else null
     val big = when {
-        preview != null -> fmt(preview, 10)
         e.isEmpty() -> "0"
         CalcState.justEval -> parseNum(e.replace('−', '-'))?.let { fmt(it, 10) } ?: e
         else -> e
     }
-    val small = if (preview != null || CalcState.justEval) e else ""
+    val above = if (CalcState.justEval) CalcState.lastExpr else ""
+    val below = if (preview != null) fmt(preview, 10) else ""
 
     BoxWithConstraints(
         Modifier
@@ -213,8 +219,9 @@ fun CalcPage() {
                 verticalArrangement = Arrangement.Bottom,
                 horizontalAlignment = Alignment.End
             ) {
-                if (small.isNotEmpty()) {
-                    Text(small, color = p.sub, fontSize = 22.sp, maxLines = 2, textAlign = TextAlign.End)
+                if (above.isNotEmpty()) {
+                    Text(above, style = num(26.sp, FontWeight.Normal), color = p.sub, maxLines = 2, textAlign = TextAlign.End)
+                    Spacer(Modifier.height(4.dp))
                 }
                 val size = when {
                     big.length > 16 -> 34.sp
@@ -223,6 +230,11 @@ fun CalcPage() {
                     else -> 64.sp
                 }
                 Text(big, style = num(size), color = p.ink, maxLines = 2, textAlign = TextAlign.End)
+                // Platz für die graue Vorschau immer freihalten, damit nichts springt
+                Text(
+                    below, style = num(30.sp, FontWeight.Normal), color = p.sub, maxLines = 1, textAlign = TextAlign.End,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
             if (CalcState.sci) {
                 val rows = listOf(
