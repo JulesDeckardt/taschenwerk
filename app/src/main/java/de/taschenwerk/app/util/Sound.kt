@@ -238,9 +238,6 @@ object Chime {
     /** Tiefen unterhalb davon werden abgesenkt – Handy-Lautsprecher schnarren sonst. */
     private const val SOFTEN_HZ = 380.0
 
-    /** Klavier behält seine bisherige Lautstärke (Zielpegel wurde für die anderen gesenkt). */
-    private const val PIANO_KEEP = 0.085 / 0.06
-
     private fun breathRaw(kind: String, freq: Double): DoubleArray = when (kind) {
         "piano" -> Synth.piano(freq, 7.0)
         "bowl" -> Synth.bowl(freq)
@@ -251,9 +248,8 @@ object Chime {
 
     private fun breathBuf(kind: String, freq: Double, level: Double): ShortArray =
         cache.getOrPut("br/$kind/$freq/$level") {
-            // Klavier bleibt wie bisher; die Schalen/Gong/Kalimba bekommen weniger Tiefen gegen das Schnarren
-            if (kind == "piano") Synth.level(breathRaw(kind, freq), level * PIANO_KEEP)
-            else Synth.level(breathRaw(kind, freq), level, soften = SOFTEN_HZ)
+            // Alle Klänge mit weniger Tiefen gegen das Schnarren des Handy-Lautsprechers
+            Synth.level(breathRaw(kind, freq), level, soften = SOFTEN_HZ)
         }
 
     /** Ein Atem-Ton: immer nur einer zur Zeit, endet spätestens nach [maxMs] weich. */
@@ -280,7 +276,7 @@ object Chime {
                     "crystal" -> Synth.crystal(174.61)
                     else -> Synth.gong(110.0)
                 }
-                if (kind == "piano") Synth.level(raw, 0.9 * PIANO_KEEP) else Synth.level(raw, 0.9, soften = SOFTEN_HZ)
+                Synth.level(raw, 0.9, soften = SOFTEN_HZ)
             }
             out(buf, solo = true, maxMs = 7000)
         }
