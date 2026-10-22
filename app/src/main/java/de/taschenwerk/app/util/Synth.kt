@@ -15,7 +15,7 @@ object Synth {
     const val SR = 44100
 
     /** Ziel-Lautheit (gewichteter Effektivwert der ersten 2 s) für level = 1.0. */
-    const val TARGET = 0.06
+    const val TARGET = 0.05
 
     /** Nie lauter als das: Abstand zur Übersteuerung, damit nichts kratzt. */
     private const val PEAK_MAX = 0.80
@@ -126,7 +126,7 @@ object Synth {
         val n = (SR * dur).toInt()
         val out = DoubleArray(n)
         val b = 0.00035
-        val amps = doubleArrayOf(1.0, 0.42, 0.20, 0.11, 0.06, 0.035, 0.02)
+        val amps = doubleArrayOf(1.0, 0.75, 0.5, 0.28, 0.14, 0.07, 0.035)
         val parts = amps.indices.map { k -> val h = k + 1; freq * h * sqrt(1 + b * h * h) }
         val detune = 1.0012
         for (i in 0 until n) {
@@ -134,7 +134,7 @@ object Synth {
             var s = 0.0
             for (k in amps.indices) {
                 val f = parts[k]
-                s += amps[k] * exp(-t * (0.42 + 0.5 * k)) * (sin(2 * PI * f * t) + 0.6 * sin(2 * PI * f * detune * t)) / 1.6
+                s += amps[k] * exp(-t * (0.42 + 0.22 * k)) * (sin(2 * PI * f * t) + 0.6 * sin(2 * PI * f * detune * t)) / 1.6
             }
             val body = 0.55 * exp(-t / 1.1) + 0.45 * exp(-t / 4.2)
             out[i] = s * body * attack(t, 0.012) * tail(t, dur, 0.8)
@@ -168,40 +168,62 @@ object Synth {
             s[i] = v * attack(t, att) * tail(t, dur, 1.0)
         }
         // Hall erst nach der Hüllkurve; danach noch einmal weich ausblenden, damit auch der Hall bei 0 endet.
-        val r = reverb(s, rev)
-        for (i in 0 until n) r[i] *= tail(i.toDouble() / SR, dur, 0.4)
-        return r
+        return s
     }
 
-    /** Große tibetische Klangschale: unharmonische Teiltöne (1 : 2,71 : 5,06 : 8,2), jede schwebt leicht. */
-    fun bowl(freq: Double) = modal(
-        freq, 10.0,
-        doubleArrayOf(1.0, 2.71, 5.06, 8.2), doubleArrayOf(1.0, 0.34, 0.10, 0.03),
-        doubleArrayOf(9.0, 5.5, 3.0, 1.6), doubleArrayOf(0.6, 1.1, 1.7, 2.4),
-        att = 0.012, rev = 0.14
-    )
+    /**
+     * Klangschale (dumpf, ruhig) – nach dem Vorbild einer tiefen tibetischen Schale:
+     * zweiter Teilton (2,71×) fast so laut wie der Grundton, damit auch kleine Lautsprecher den Klang
+     * sauber tragen und nicht an einem reinen tiefen Ton schnarren.
+     */
+    fun bowl(freq: Double) = singing(freq, 8.0, doubleArrayOf(1.0, 2.71, 5.4), doubleArrayOf(1.0, 0.75, 0.12),
+        doubleArrayOf(4.5, 3.0, 1.3), doubleArrayOf(0.6, 0.35, 0.02), doubleArrayOf(1.6, 0.4, 4.5))
+
+    /** Deep Gong (nach der Vorlage des Nutzers): 1 : 3,12 : 6,25, weich anschwellend, langsam schwebend. */
+    fun deepGong(freq: Double) = singing(freq, 8.0, doubleArrayOf(1.0, 3.12, 6.25), doubleArrayOf(1.0, 0.8, 0.2),
+        doubleArrayOf(5.0, 3.3, 1.6), doubleArrayOf(0.9, 0.35, 0.02), doubleArrayOf(2.1, 0.38, 5.8))
+
+    /** Gemeinsamer Aufbau für Schalen: Teiltöne mit eigenem Anschwellen, Abklingen und Schweben. */
+    private fun singing(
+        freq: Double, dur: Double, ratios: DoubleArray, amps: DoubleArray,
+        taus: DoubleArray, swell: DoubleArray, beat: DoubleArray
+    ): DoubleArray {
+        val n = (SR * dur).toInt()
+        val s = DoubleArray(n)
+        for (i in 0 until n) {
+            val t = i.toDouble() / SR
+            var v = 0.0
+            for (k in ratios.indices) {
+                val env = (1 - exp(-t / swell[k])) * exp(-t / taus[k])
+                val wob = 1 - 0.3 * (0.5 - 0.5 * cos(2 * PI * beat[k] * t))
+                v += amps[k] * env * wob * sin(2 * PI * freq * ratios[k] * t)
+            }
+            s[i] = v * attack(t, 0.04) * tail(t, dur, 1.0)
+        }
+        return s
+    }
 
     /** Kristall-Klangschale: fast reiner Ton, ruhiges Nachschwingen. */
     fun crystal(freq: Double) = modal(
         freq, 6.0,
-        doubleArrayOf(1.0, 2.0, 3.0), doubleArrayOf(1.0, 0.10, 0.03),
+        doubleArrayOf(1.0, 2.0, 3.0), doubleArrayOf(1.0, 0.95, 0.45),
         doubleArrayOf(3.2, 2.0, 1.2), doubleArrayOf(0.4, 0.0, 0.0),
         att = 0.04, rev = 0.12
     )
 
     /** Sanfter Gong: tief, Obertöne blühen nach dem Anschlag auf. */
     fun gong(freq: Double) = modal(
-        freq, 6.5,
-        doubleArrayOf(1.0, 1.52, 2.03, 2.71, 3.4, 4.2), doubleArrayOf(1.0, 0.45, 0.3, 0.2, 0.09, 0.04),
-        doubleArrayOf(3.6, 3.0, 2.6, 2.2, 1.8, 1.4), doubleArrayOf(0.3, 0.5, 0.7, 0.9, 1.1, 1.4),
-        att = 0.03, rev = 0.14, bloom = 0.25
+        freq, 4.5,
+        doubleArrayOf(1.0, 1.52, 2.03, 3.4), doubleArrayOf(1.0, 0.5, 0.35, 0.9),
+        doubleArrayOf(2.4, 1.9, 1.5, 1.1), doubleArrayOf(0.3, 0.5, 0.0, 0.0),
+        att = 0.03, rev = 0.0, bloom = 0.2
     )
 
     /** Kalimba: gezupfte Metallzunge – kurz, weich (ohne Anschlag-Geräusch). */
     fun kalimba(freq: Double) = modal(
         freq, 3.2,
-        doubleArrayOf(1.0, 2.0, 5.93), doubleArrayOf(1.0, 0.24, 0.07),
-        doubleArrayOf(1.1, 0.35, 0.09), doubleArrayOf(0.0, 0.0, 0.0),
+        doubleArrayOf(1.0, 2.0, 5.93), doubleArrayOf(1.0, 0.95, 0.12),
+        doubleArrayOf(1.1, 0.95, 0.09), doubleArrayOf(0.0, 0.0, 0.0),
         att = 0.012, rev = 0.12
     )
 

@@ -432,7 +432,7 @@ fun BreathScreen() {
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
                                 .background(if (sel) p.fill else p.track)
-                                .clickable { setKlang(id); cue("in", id, 2500L) }
+                                .clickable { setKlang(id) }
                                 .padding(horizontal = 12.dp, vertical = 7.dp)
                         )
                     }
@@ -528,10 +528,11 @@ fun BreathScreen() {
 
 /** Tonhöhen je Klang: Einatmen, Halten, Ausatmen – im Zweifel tiefer. */
 private val TONES = mapOf(
-    "piano" to doubleArrayOf(196.0, 261.63, 146.83),
-    "bowl" to doubleArrayOf(311.13, 261.63, 233.08),
-    "crystal" to doubleArrayOf(261.63, 220.0, 196.0),
+    "piano" to doubleArrayOf(293.66, 246.94, 220.0),
+    "bowl" to doubleArrayOf(233.08, 207.65, 185.0),
+    "crystal" to doubleArrayOf(293.66, 246.94, 220.0),
     "gong" to doubleArrayOf(174.61, 146.83, 130.81),
+    "deep" to doubleArrayOf(180.0, 160.0, 134.8),
     "kalimba" to doubleArrayOf(349.23, 293.66, 261.63)
 )
 
@@ -540,7 +541,7 @@ private const val HOLD_LEVEL = 0.62
 
 private val KLANGE = listOf(
     "none" to "Kein Klang", "piano" to "Klavier", "bowl" to "Klangschale", "crystal" to "Kristallschale",
-    "gong" to "Sanfter Gong", "kalimba" to "Kalimba", "vibe" to "Vibration"
+    "gong" to "Sanfter Gong", "deep" to "Deep Gong", "kalimba" to "Kalimba", "vibe" to "Vibration"
 )
 
 private fun rhythmText(v: List<Int>) = v.filter { it > 0 }.joinToString(" · ")

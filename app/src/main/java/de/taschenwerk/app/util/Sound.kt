@@ -235,14 +235,15 @@ object Chime {
 
     // ------------------------------------------------------------ Atem-Klänge (alle gleich laut, siehe Synth)
 
-    /** Tiefen unterhalb davon werden abgesenkt – Handy-Lautsprecher schnarren sonst. */
-    private const val SOFTEN_HZ = 380.0
+    /** Nur den tiefsten Bereich absenken (darunter spielen kleine Lautsprecher ohnehin nichts). */
+    private const val SOFTEN_HZ = 150.0
 
     private fun breathRaw(kind: String, freq: Double): DoubleArray = when (kind) {
         "piano" -> Synth.piano(freq, 7.0)
         "bowl" -> Synth.bowl(freq)
         "crystal" -> Synth.crystal(freq)
         "gong" -> Synth.gong(freq)
+        "deep" -> Synth.deepGong(freq)
         else -> Synth.kalimba(freq)
     }
 
@@ -273,8 +274,9 @@ object Chime {
                         listOf(261.63, 349.23, 440.0).map { Synth.kalimba(it) }, 0.38, doubleArrayOf(0.8, 0.8, 1.0)
                     )
                     "bowl" -> Synth.bowl(155.56)
-                    "crystal" -> Synth.crystal(174.61)
-                    else -> Synth.gong(110.0)
+                    "crystal" -> Synth.crystal(220.0)
+                    "deep" -> Synth.deepGong(134.8)
+                    else -> Synth.gong(130.81)
                 }
                 Synth.level(raw, 0.9, soften = SOFTEN_HZ)
             }
