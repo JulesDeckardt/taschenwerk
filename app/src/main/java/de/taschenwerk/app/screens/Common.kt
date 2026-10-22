@@ -284,7 +284,7 @@ fun TypingText(
         androidx.compose.ui.text.buildAnnotatedString {
             val k = if (a.value < 1f) n.coerceAtMost(text.length) else 0
             append(text.dropLast(k))
-            if (k > 0) withStyle(androidx.compose.ui.text.SpanStyle(color = color.copy(alpha = a.value))) { append(text.takeLast(k)) }
+            if (k > 0) { pushStyle(androidx.compose.ui.text.SpanStyle(color = color.copy(alpha = a.value))); append(text.takeLast(k)); pop() }
         },
         style = style, color = color, maxLines = maxLines, modifier = modifier,
         textAlign = androidx.compose.ui.text.style.TextAlign.End
