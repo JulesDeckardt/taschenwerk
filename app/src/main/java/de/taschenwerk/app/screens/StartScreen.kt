@@ -268,7 +268,7 @@ fun StartScreen(nav: Nav) {
                     "currency" -> CurrencyCard(store)
                     "altitude" -> AltitudeTile(nav, CARD_MIN)
                     "breath" -> BreathMini()
-                    "calc" -> CalcTile(CARD_MIN)
+                    "calc" -> CalcTile()
                 }
             }
         }
@@ -371,6 +371,15 @@ fun CurrencyCard(store: Store) {
     var aText by remember { mutableStateOf("1.000") }
     var bText by remember { mutableStateOf("") }
     var editedTop by remember { mutableStateOf(true) }
+    // Ergebnis aus der Rechner-Kachel übernehmen („→ MXN“)
+    val pushed = CalcBridge.push
+    LaunchedEffect(pushed) {
+        if (pushed != null) {
+            aText = pushed
+            editedTop = true
+            CalcBridge.push = null
+        }
+    }
 
     val rates = Rates.rates
     val aVal = parseNum(aText)
