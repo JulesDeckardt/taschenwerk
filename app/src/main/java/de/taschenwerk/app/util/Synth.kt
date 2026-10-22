@@ -15,7 +15,7 @@ object Synth {
     const val SR = 44100
 
     /** Ziel-Lautheit (gewichteter Effektivwert der ersten 2 s) für level = 1.0. */
-    const val TARGET = 0.085
+    const val TARGET = 0.06
 
     /** Nie lauter als das: Abstand zur Übersteuerung, damit nichts kratzt. */
     private const val PEAK_MAX = 0.80
@@ -27,8 +27,12 @@ object Synth {
         val combs = arrayOf(1557 to 0.84, 1617 to 0.83, 1491 to 0.82, 1422 to 0.81)
         for ((d, g) in combs) {
             val b = DoubleArray(n)
+            var lp = 0.0
             for (i in 0 until n) {
-                b[i] = x[i] + (if (i >= d) g * b[i - d] else 0.0)
+                // gedämpfte Rückkopplung: Höhen klingen im Hall schneller ab (kein metallisches Klirren)
+                val fb = if (i >= d) b[i - d] else 0.0
+                lp = fb * 0.55 + lp * 0.45
+                b[i] = x[i] + g * lp
                 wet[i] += b[i] * 0.25
             }
         }
@@ -64,8 +68,10 @@ object Synth {
     }
 
     /** Auf gleiche Lautheit bringen (level 1.0 = Ein-/Ausatmen, kleiner = leiser), Spitzen begrenzt. */
-    fun level(s: DoubleArray, level: Double): ShortArray {
-        val l = loudness(s).coerceAtLeast(1e-9)
+    fun level(s0: DoubleArray, level: Double, soften: Double = 0.0): ShortArray {
+        val l = loudness(s0).coerceAtLeast(1e-9)
+        // Tiefen erst NACH der Lautstärke-Messung absenken, damit sie nicht wieder hochgeregelt werden
+        val s = if (soften > 0) highPass(s0, soften) else s0
         var peak = 1e-9
         s.forEach { if (abs(it) > peak) peak = abs(it) }
         var g = TARGET * level / l
@@ -82,6 +88,23 @@ object Synth {
         if (left >= fade) return 1.0
         if (left <= 0) return 0.0
         return 0.5 - 0.5 * cos(PI * left / fade)
+    }
+
+    /** Hochpass 2. Ordnung: nimmt die tiefen Anteile weg, bei denen Handy-Lautsprecher schnarren. */
+    fun highPass(x: DoubleArray, f0: Double): DoubleArray {
+        val w = 2 * PI * f0 / SR
+        val al = sin(w) / (2 * 0.707)
+        val c = cos(w)
+        val a0 = 1 + al
+        val b0 = (1 + c) / 2 / a0; val b1 = -(1 + c) / a0; val b2 = (1 + c) / 2 / a0
+        val a1 = -2 * c / a0; val a2 = (1 - al) / a0
+        val y = DoubleArray(x.size)
+        var x1 = 0.0; var x2 = 0.0; var y1 = 0.0; var y2 = 0.0
+        for (i in x.indices) {
+            val o = b0 * x[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
+            x2 = x1; x1 = x[i]; y2 = y1; y1 = o; y[i] = o
+        }
+        return y
     }
 
     /** Puffer auf [ms] kürzen und mit weicher Kosinus-Blende enden lassen. */
@@ -155,15 +178,15 @@ object Synth {
         freq, 10.0,
         doubleArrayOf(1.0, 2.71, 5.06, 8.2), doubleArrayOf(1.0, 0.34, 0.10, 0.03),
         doubleArrayOf(9.0, 5.5, 3.0, 1.6), doubleArrayOf(0.6, 1.1, 1.7, 2.4),
-        att = 0.012, rev = 0.22
+        att = 0.012, rev = 0.14
     )
 
     /** Kristall-Klangschale: fast reiner Ton, ruhiges Nachschwingen. */
     fun crystal(freq: Double) = modal(
         freq, 6.0,
-        doubleArrayOf(1.0, 2.0, 3.0), doubleArrayOf(1.0, 0.04, 0.01),
+        doubleArrayOf(1.0, 2.0, 3.0), doubleArrayOf(1.0, 0.10, 0.03),
         doubleArrayOf(3.2, 2.0, 1.2), doubleArrayOf(0.4, 0.0, 0.0),
-        att = 0.04, rev = 0.18
+        att = 0.04, rev = 0.12
     )
 
     /** Sanfter Gong: tief, Obertöne blühen nach dem Anschlag auf. */
@@ -171,15 +194,15 @@ object Synth {
         freq, 6.5,
         doubleArrayOf(1.0, 1.52, 2.03, 2.71, 3.4, 4.2), doubleArrayOf(1.0, 0.45, 0.3, 0.2, 0.09, 0.04),
         doubleArrayOf(3.6, 3.0, 2.6, 2.2, 1.8, 1.4), doubleArrayOf(0.3, 0.5, 0.7, 0.9, 1.1, 1.4),
-        att = 0.03, rev = 0.22, bloom = 0.25
+        att = 0.03, rev = 0.14, bloom = 0.25
     )
 
     /** Kalimba: gezupfte Metallzunge – kurz, weich (ohne Anschlag-Geräusch). */
     fun kalimba(freq: Double) = modal(
         freq, 3.2,
-        doubleArrayOf(1.0, 2.0, 5.93), doubleArrayOf(1.0, 0.12, 0.07),
+        doubleArrayOf(1.0, 2.0, 5.93), doubleArrayOf(1.0, 0.24, 0.07),
         doubleArrayOf(1.1, 0.35, 0.09), doubleArrayOf(0.0, 0.0, 0.0),
-        att = 0.012, rev = 0.18
+        att = 0.012, rev = 0.12
     )
 
     /** Mehrere Töne zeitversetzt zu einem Klang mischen (Ausklang). */
