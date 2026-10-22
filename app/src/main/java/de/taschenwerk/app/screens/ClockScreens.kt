@@ -95,15 +95,15 @@ import java.util.Locale
 fun ClockTab(nav: Nav) {
     Column(Modifier.fillMaxSize()) {
         Segmented(
-            listOf("Weltzeit", "Wecker", "Stoppuhr", "Timer"), nav.uhrSub, { nav.uhrSub = it },
+            listOf("Wecker", "Stoppuhr", "Timer", "Weltzeit"), nav.uhrSub, { nav.uhrSub = it },
             Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
         )
         Box(Modifier.weight(1f)) {
             when (nav.uhrSub) {
-                0 -> WorldPage()
-                1 -> AlarmsPage(nav)
-                2 -> StopwatchPage()
-                else -> TimerPage(nav)
+                0 -> AlarmsPage(nav)
+                1 -> StopwatchPage()
+                2 -> TimerPage(nav)
+                else -> WorldPage()
             }
         }
     }
@@ -234,21 +234,22 @@ fun AlarmEditScreen(nav: Nav, id: Int?) {
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // Die Uhrzeit ist das Zentrum: große Räder in der Mitte
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp),
+                    .padding(top = 28.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                NumberWheel(24, hour, { hour = it }, width = 86.dp, big = 42.sp, itemHeight = 52.dp)
-                Text(":", style = num(34.sp, FontWeight.SemiBold), color = p.ink, modifier = Modifier.padding(horizontal = 6.dp))
-                NumberWheel(60, minute, { minute = it }, width = 86.dp, big = 42.sp, itemHeight = 52.dp)
+                NumberWheel(24, hour, { hour = it }, width = 112.dp, big = 64.sp, itemHeight = 78.dp)
+                Text(":", style = num(52.sp), color = p.ink, modifier = Modifier.padding(horizontal = 6.dp))
+                NumberWheel(60, minute, { minute = it }, width = 112.dp, big = 64.sp, itemHeight = 78.dp)
             }
 
-            // Wie lange noch bis zum Klingeln
+            // Wie lange noch bis zum Klingeln – klein und ruhig
             key(tick) {
                 val preview = Alarm(0, hour, minute, days, true)
                 val next = AlarmScheduler.nextTrigger(preview)
@@ -256,39 +257,25 @@ fun AlarmEditScreen(nav: Nav, id: Int?) {
                 val totalMin = (d.toMinutes() + if (d.seconds % 60 > 0) 1 else 0).coerceAtLeast(0)
                 val hh = totalMin / 60
                 val mm = totalMin % 60
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 2.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        buildAnnotatedString {
-                            if (hh < 24) {
-                                append("Noch ")
-                                withStyle(SpanStyle(color = p.accent, fontWeight = FontWeight.Bold)) {
-                                    append(if (hh > 0) "$hh Std. $mm Min." else "$mm Min.")
-                                }
-                                append(" Schlaf")
-                            } else {
-                                append("Klingelt in ")
-                                withStyle(SpanStyle(color = p.accent, fontWeight = FontWeight.Bold)) {
-                                    append("${hh / 24} T. ${hh % 24} Std.")
-                                }
-                            }
-                        },
-                        color = p.ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        "Klingelt " + next.format(DateTimeFormatter.ofPattern("EEEE, HH:mm", Locale.GERMAN)) + " Uhr",
-                        color = p.sub, fontSize = 13.sp
-                    )
+                val inTxt = when {
+                    hh >= 24 -> "${hh / 24} T. ${hh % 24} Std."
+                    hh > 0 -> "$hh Std. $mm Min."
+                    else -> "$mm Min."
                 }
+                Text(
+                    buildAnnotatedString {
+                        append("Klingelt in ")
+                        withStyle(SpanStyle(color = p.ink, fontWeight = FontWeight.SemiBold)) { append(inTxt) }
+                        append(" · " + next.format(DateTimeFormatter.ofPattern("EE, HH:mm", Locale.GERMAN)))
+                    },
+                    color = p.sub, fontSize = 14.sp, textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 14.dp)
+                )
             }
 
-            Card {
-                Text("Wiederholen", color = p.sub, fontSize = 13.sp)
-                Spacer(Modifier.height(12.dp))
+            Card(padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     listOf("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So").forEachIndexed { i, d ->
                         val on = days and (1 shl i) != 0
@@ -297,46 +284,57 @@ fun AlarmEditScreen(nav: Nav, id: Int?) {
                         }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SmallButton("Einmal", Modifier.weight(1f)) { days = 0 }
-                    SmallButton("Mo–Fr", Modifier.weight(1f)) { days = 0b0011111 }
-                    SmallButton("Täglich", Modifier.weight(1f)) { days = 0b1111111 }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    MiniChip("Einmal", days == 0) { days = 0 }
+                    MiniChip("Mo–Fr", days == 0b0011111) { days = 0b0011111 }
+                    MiniChip("Täglich", days == 0b1111111) { days = 0b1111111 }
                 }
             }
-            Card(onClick = { pickSound = true }) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Weckton", color = p.sub, fontSize = 13.sp)
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            remember(sound) { AlarmSounds.title(ctx, sound) },
-                            color = p.ink, fontSize = 17.sp, maxLines = 1
-                        )
-                    }
-                    TwIcon(Ic.chevDown, tint = p.sub, size = 18.dp)
+            Card(padding = PaddingValues(horizontal = 14.dp, vertical = 2.dp)) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(46.dp)
+                        .clickable { pickSound = true },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Weckton", color = p.sub, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Text(remember(sound) { AlarmSounds.title(ctx, sound) }, color = p.ink, fontSize = 15.sp, maxLines = 1)
+                    TwIcon(Ic.chevRight, tint = p.muted, size = 16.dp, modifier = Modifier.padding(start = 4.dp))
                 }
-            }
-            Card {
-                Text("Bezeichnung", color = p.sub, fontSize = 13.sp)
-                Spacer(Modifier.height(6.dp))
-                BasicTextField(
-                    value = label, onValueChange = { label = it.take(40) }, singleLine = true,
-                    textStyle = TextStyle(color = p.ink, fontSize = 17.sp),
-                    cursorBrush = SolidColor(p.ink),
-                    modifier = Modifier.fillMaxWidth(),
-                    decorationBox = { inner ->
-                        if (label.isEmpty()) Text("z. B. Arbeit", color = p.muted, fontSize = 17.sp)
-                        inner()
-                    }
-                )
+                Divider()
+                Row(Modifier.fillMaxWidth().height(46.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Bezeichnung", color = p.sub, fontSize = 14.sp)
+                    BasicTextField(
+                        value = label, onValueChange = { label = it.take(40) }, singleLine = true,
+                        textStyle = TextStyle(color = p.ink, fontSize = 15.sp, textAlign = TextAlign.End),
+                        cursorBrush = SolidColor(p.ink),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 12.dp),
+                        decorationBox = { inner ->
+                            Box(contentAlignment = Alignment.CenterEnd) {
+                                if (label.isEmpty()) Text("z. B. Arbeit", color = p.muted, fontSize = 15.sp)
+                                inner()
+                            }
+                        }
+                    )
+                }
             }
             if (existing != null) {
-                SmallButton("Wecker löschen", Modifier.fillMaxWidth()) {
-                    AlarmScheduler.cancel(ctx, existing.id)
-                    store.removeAlarm(existing.id)
-                    nav.overlay = null
-                }
+                Text(
+                    "Wecker löschen", color = p.sub, fontSize = 14.sp,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            AlarmScheduler.cancel(ctx, existing.id)
+                            store.removeAlarm(existing.id)
+                            nav.overlay = null
+                        }
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                )
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -353,7 +351,7 @@ private fun DayCircle(text: String, on: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .padding(horizontal = 2.dp)
-            .widthIn(max = 40.dp)
+            .widthIn(max = 34.dp)
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(CircleShape)
@@ -364,7 +362,7 @@ private fun DayCircle(text: String, on: Boolean, onClick: () -> Unit) {
         Text(
             text,
             color = if (on) p.onFill else p.sub,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
             softWrap = false,
@@ -375,6 +373,31 @@ private fun DayCircle(text: String, on: Boolean, onClick: () -> Unit) {
             )
         )
     }
+}
+
+@Composable
+private fun SmallTitle(title: String, action: String, onAction: () -> Unit) {
+    val p = LocalPal.current
+    Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, color = p.sub, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text(
+            action, color = p.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onAction).padding(4.dp)
+        )
+    }
+}
+
+@Composable
+private fun MiniChip(text: String, selected: Boolean, onClick: () -> Unit) {
+    val p = LocalPal.current
+    Text(
+        text, color = if (selected) p.onFill else p.ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (selected) p.fill else p.track)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 11.dp, vertical = 5.dp)
+    )
 }
 
 @Composable
@@ -769,53 +792,63 @@ fun TimerPage(nav: Nav) {
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp, bottom = 6.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    NumberWheel(24, h, { h = it }, width = 70.dp, big = 34.sp, itemHeight = 46.dp)
+                    NumberWheel(24, h, { h = it }, width = 90.dp, big = 52.sp, itemHeight = 64.dp)
                     Text("Std.", color = p.sub, fontSize = 12.sp)
                 }
-                Text(":", style = num(28.sp, FontWeight.SemiBold), color = p.ink, modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 18.dp))
+                Text(":", style = num(40.sp), color = p.ink, modifier = Modifier.padding(start = 2.dp, end = 2.dp, bottom = 18.dp))
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    NumberWheel(60, m, { m = it }, width = 70.dp, big = 34.sp, itemHeight = 46.dp)
+                    NumberWheel(60, m, { m = it }, width = 90.dp, big = 52.sp, itemHeight = 64.dp)
                     Text("Min.", color = p.sub, fontSize = 12.sp)
                 }
-                Text(":", style = num(28.sp, FontWeight.SemiBold), color = p.ink, modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 18.dp))
+                Text(":", style = num(40.sp), color = p.ink, modifier = Modifier.padding(start = 2.dp, end = 2.dp, bottom = 18.dp))
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    NumberWheel(60, s, { s = it }, width = 70.dp, big = 34.sp, itemHeight = 46.dp)
+                    NumberWheel(60, s, { s = it }, width = 90.dp, big = 52.sp, itemHeight = 64.dp)
                     Text("Sek.", color = p.sub, fontSize = 12.sp)
                 }
             }
 
-            SectionTitle("Meine Timer", "Hinzufügen") { addPreset = true }
-            store.presets.forEach { pr ->
-                Card(
-                    modifier = Modifier.pointerInput(pr) { detectTapGestures(onLongPress = { removePreset = pr }, onTap = { TimerStore.start(ctx, pr.sec * 1000L, pr.name) }) },
-                    padding = PaddingValues(horizontal = 18.dp, vertical = 15.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(pr.name, color = p.ink, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                        Text(hms(pr.sec.toLong()), style = num(18.sp, FontWeight.Normal), color = p.ink)
+            SmallTitle("Meine Timer", "Hinzufügen") { addPreset = true }
+            if (store.presets.isNotEmpty()) Card(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
+                store.presets.forEachIndexed { i, pr ->
+                    if (i > 0) Divider()
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(46.dp)
+                            .pointerInput(pr) { detectTapGestures(onLongPress = { removePreset = pr }, onTap = { TimerStore.start(ctx, pr.sec * 1000L, pr.name) }) },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(pr.name, color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text(hms(pr.sec.toLong()), style = num(16.sp, FontWeight.Normal), color = p.sub)
                     }
                 }
             }
 
-            SectionTitle("Intervall", "Neu") { nav.overlay = Overlay.EditWorkout(null) }
-            store.workouts.forEach { w ->
-                Card(onClick = { nav.overlay = Overlay.EditWorkout(w.id) }, padding = PaddingValues(start = 18.dp, end = 8.dp, top = 10.dp, bottom = 10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+            SmallTitle("Intervall", "Neu") { nav.overlay = Overlay.EditWorkout(null) }
+            if (store.workouts.isNotEmpty()) Card(padding = PaddingValues(start = 16.dp, end = 8.dp, top = 2.dp, bottom = 2.dp)) {
+                store.workouts.forEachIndexed { i, w ->
+                    if (i > 0) Divider()
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                            .clickable { nav.overlay = Overlay.EditWorkout(w.id) },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Column(Modifier.weight(1f)) {
-                            Text(w.name, color = p.ink, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                            Text(w.name, color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                             val ex = w.steps.count { !it.pause }
-                            Text(
-                                "$ex Übung${if (ex == 1) "" else "en"} · ${w.rounds} Runden",
-                                color = p.sub, fontSize = 13.sp
-                            )
+                            Text("$ex Übung${if (ex == 1) "" else "en"} · ${w.rounds} Runden", color = p.sub, fontSize = 12.sp)
                         }
-                        Text(hms(w.totalSec.toLong(), false), style = num(17.sp, FontWeight.Normal), color = p.ink)
-                        CircleButton(Ic.play, { nav.overlay = Overlay.RunWorkout(w.id) }, size = 44.dp, bg = p.card, iconSize = 20.dp, desc = "${w.name} starten")
+                        Text(hms(w.totalSec.toLong(), false), style = num(16.sp, FontWeight.Normal), color = p.sub)
+                        CircleButton(Ic.play, { nav.overlay = Overlay.RunWorkout(w.id) }, size = 38.dp, bg = p.card, iconSize = 16.dp, desc = "${w.name} starten")
                     }
                 }
             }

@@ -292,7 +292,7 @@ fun BreathScreen() {
                     desc = if (klang == "none") "Ton an" else "Ton aus"
                 )
                 CircleButton(
-                    Ic.dots, { if (!running) { techOpen = false; menuOpen = !menuOpen } },
+                    Ic.more, { if (!running) { techOpen = false; menuOpen = !menuOpen } },
                     size = 42.dp, bg = Color.Transparent, fg = if (running) p.muted else p.ink, iconSize = 21.dp,
                     desc = "Einstellungen"
                 )
@@ -772,6 +772,11 @@ fun SettingsScreen(nav: Nav) {
     val ctx = LocalContext.current
     val store = remember { Store.get(ctx) }
     val p = LocalPal.current
+    var homeOpen by remember { mutableStateOf(false) }
+    if (homeOpen) {
+        HomeSettingsPage { homeOpen = false }
+        return
+    }
     var check by remember { mutableIntStateOf(0) }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { check++ }
 
@@ -844,22 +849,8 @@ fun SettingsScreen(nav: Nav) {
 
             Label("Startseite")
             Card(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
-                var on by remember { mutableStateOf(store.getBool("clock2", false)) }
-                var zone by remember { mutableStateOf(store.getString("clock2Zone") ?: "Europe/Berlin") }
-                RowItem("Zweite Uhr", trailing = { Toggle(on) { on = it; store.putBool("clock2", it) } })
-                if (on) {
-                    (listOf("Europe/Berlin") + store.zones).distinct().forEach { z ->
-                        Divider()
-                        RowItem(cityForZone(z), onClick = { zone = z; store.putString("clock2Zone", z) }, trailing = {
-                            if (z == zone) TwIcon(Ic.check, tint = p.ink, size = 18.dp)
-                        })
-                    }
-                }
+                RowItem("Kacheln, Schnellzugriffe, zweite Uhr", onClick = { homeOpen = true })
             }
-            Text(
-                "Zeigt die Uhrzeit einer zweiten Stadt klein unter der großen Uhr. Weitere Städte fügst du unter Uhr → Weltzeit hinzu.",
-                color = p.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp)
-            )
 
             Label("Währung")
             Card(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
@@ -1009,6 +1000,160 @@ private fun CurrencyPick(title: String, code: String, onPick: (String) -> Unit) 
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             CURRENCIES.forEach { (c, n) ->
                 DropdownMenuItem(text = { Text("$c  ·  $n") }, onClick = { onPick(c); open = false })
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ Breath als kleine Kachel (Startseite)
+
+@Composable
+fun BreathMini() {
+    val ctx = LocalContext.current
+    val store = remember { Store.get(ctx) }
+    val p = LocalPal.current
+    var tech by remember { mutableStateOf(store.getString("brTech") ?: "box") }
+    val all = remember { TECHS + loadCustom(store) }
+    val cur = all.firstOrNull { it.id == tech } ?: TECHS.first { it.id == "box" }
+    var klang by remember {
+        mutableStateOf(store.getString("brKlang") ?: if (store.getBool("brSound", true)) "piano" else "none")
+    }
+    var running by remember { mutableStateOf(false) }
+    var finished by remember { mutableStateOf(false) }
+    var pick by remember { mutableStateOf(false) }
+    val scale = remember { Animatable(SMALL) }
+    val view = LocalView.current
+    DisposableEffect(running) {
+        view.keepScreenOn = running
+        onDispose { view.keepScreenOn = false }
+    }
+    DisposableEffect(Unit) { onDispose { Chime.stopSolo() } }
+    LaunchedEffect(klang) {
+        TONES[klang]?.let { t -> Chime.warmBreath(klang, t[0] to 1.0, t[1] to HOLD_LEVEL, t[2] to 1.0) }
+    }
+
+    fun cue(i: Int, ms: Long) {
+        if (klang == "vibe") {
+            when (i) {
+                0 -> Haptic.inhale(ctx)
+                1 -> Haptic.hold(ctx)
+                else -> Haptic.exhale(ctx)
+            }
+            return
+        }
+        val f = TONES[klang]?.get(i) ?: return
+        Chime.breath(klang, f, if (i == 1) HOLD_LEVEL else 1.0, ms)
+    }
+
+    LaunchedEffect(running) {
+        if (!running) {
+            if (!finished) Chime.stopSolo()
+            finished = false
+            scale.animateTo(SMALL, tween(1600, easing = Ease))
+            return@LaunchedEffect
+        }
+        val tempo = store.getLong("brTempo_${cur.id}", 0L).toInt()
+        val minutes = store.getLong("brDur_${cur.id}", 5L).toInt()
+        val f = (100 - tempo) / 100.0
+        val phs = listOf(
+            Triple(0, cur.v[0], 1f), Triple(1, cur.v[1], 1f), Triple(2, cur.v[2], SMALL), Triple(3, cur.v[3], SMALL)
+        ).filter { it.second > 0 }
+        val cycleMs = phs.sumOf { (it.second * 1000 * f).toLong() }.coerceAtLeast(1L)
+        val cycles = ((minutes * 60_000L + cycleMs - 1) / cycleMs).toInt().coerceAtLeast(1)
+        for (c in 1..cycles) {
+            for ((k, sec, to) in phs) {
+                if (c == cycles && k == 3) break
+                val ms = (sec * 1000 * f).toLong()
+                cue(if (k == 3) 1 else k, ms)
+                val anim = launch { scale.animateTo(to, tween(ms.toInt(), easing = Ease)) }
+                delay(ms)
+                anim.cancel()
+            }
+        }
+        delay(700)
+        when (klang) {
+            "none" -> Unit
+            "vibe" -> Haptic.done(ctx)
+            else -> Chime.breathClosing(klang)
+        }
+        finished = true
+        running = false
+    }
+
+    Card(padding = PaddingValues(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .border(1.dp, p.line, RoundedCornerShape(50))
+                        .clickable(enabled = !running) { pick = true }
+                        .padding(start = 12.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(cur.name, color = if (running) p.sub else p.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Spacer(Modifier.width(2.dp))
+                    TwIcon(Ic.chevDown, tint = p.sub, size = 15.dp)
+                }
+                DropdownMenu(expanded = pick, onDismissRequest = { pick = false }) {
+                    all.forEach { t ->
+                        DropdownMenuItem(text = { Text(t.name) }, onClick = {
+                            tech = t.id
+                            store.putString("brTech", t.id)
+                            store.putLong("brIn", t.v[0].toLong())
+                            store.putLong("brHold", t.v[1].toLong())
+                            store.putLong("brOut", t.v[2].toLong())
+                            store.putLong("brPause", t.v[3].toLong())
+                            pick = false
+                        })
+                    }
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            CircleButton(
+                if (running) Ic.pause else Ic.play, { running = !running },
+                size = 36.dp, bg = Color.Transparent, fg = p.ink, iconSize = 18.dp, desc = if (running) "Pause" else "Start"
+            )
+            CircleButton(
+                if (klang == "none") Ic.speakerOff else Ic.speaker,
+                {
+                    if (klang == "none") {
+                        klang = store.getString("brKlangLast") ?: "piano"
+                    } else {
+                        store.putString("brKlangLast", klang)
+                        klang = "none"
+                    }
+                    store.putString("brKlang", klang)
+                },
+                size = 36.dp, bg = Color.Transparent, fg = if (klang == "none") p.muted else p.ink, iconSize = 19.dp,
+                desc = if (klang == "none") "Ton an" else "Ton aus"
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            val quiet = remember { MutableInteractionSource() }
+            Box(
+                Modifier
+                    .size(132.dp)
+                    .clip(CircleShape)
+                    .clickable(interactionSource = quiet, indication = null) { running = !running },
+                contentAlignment = Alignment.Center
+            ) {
+                val halo = p.fill.copy(alpha = if (p.dark) 0.13f else 0.16f)
+                val core = if (p.dark) Color.Black.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.18f)
+                Canvas(Modifier.fillMaxSize()) { drawCircle(color = halo, radius = size.minDimension / 2) }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
+                        .clip(CircleShape)
+                        .background(p.fill)
+                )
+                Canvas(Modifier.fillMaxSize()) { drawCircle(color = core, radius = size.minDimension / 2 * SMALL) }
             }
         }
     }
