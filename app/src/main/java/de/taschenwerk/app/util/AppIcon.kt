@@ -7,13 +7,12 @@ import de.taschenwerk.app.R
 
 /** Wählbare App-Symbole. Jedes ist ein activity-alias im Manifest. */
 enum class AppIcon(val alias: String, val label: String, val preview: Int) {
+    // Alias-Namen bleiben aus früheren Versionen, damit nach dem Update immer ein Symbol aktiv ist.
     NACHT("IconNacht", "Nacht", R.drawable.icon_prev_nacht),
-    NEON("IconNeon", "Neon", R.drawable.icon_prev_neon),
-    BAUHAUS("IconBauhaus", "Bauhaus", R.drawable.icon_prev_bauhaus),
-    P("IconP", "P", R.drawable.icon_prev_p),
-    PASTELL("IconPastell", "Pastell", R.drawable.icon_prev_pastell),
-    SW("IconSw", "S/W", R.drawable.icon_prev_sw),
-    SWINV("IconSwInv", "S/W inv.", R.drawable.icon_prev_swinv);
+    TAG("IconNeon", "Tag", R.drawable.icon_prev_tag),
+    BEIGE("IconBauhaus", "Beige", R.drawable.icon_prev_beige),
+    MONO("IconSwInv", "Mono", R.drawable.icon_prev_mono),
+    MONO_HELL("IconSw", "Mono hell", R.drawable.icon_prev_monoinv);
 
     fun component(ctx: Context) = ComponentName(ctx.packageName, "de.taschenwerk.app.$alias")
 
@@ -24,6 +23,20 @@ enum class AppIcon(val alias: String, val label: String, val preview: Int) {
                 if (pm.getComponentEnabledSetting(it.component(ctx)) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) return it
             }
             return NACHT
+        }
+
+        /** Frühere Symbole (P, Pastell) gibt es nicht mehr: wer eins davon gewählt hatte, bekommt „Nacht“. */
+        fun migrate(ctx: Context) {
+            val pm = ctx.packageManager
+            val legacy = listOf("IconP", "IconPastell").map { ComponentName(ctx.packageName, "de.taschenwerk.app.$it") }
+            if (legacy.any { runCatching { pm.getComponentEnabledSetting(it) }.getOrNull() == PackageManager.COMPONENT_ENABLED_STATE_ENABLED }) {
+                apply(ctx, NACHT)
+                legacy.forEach {
+                    runCatching {
+                        pm.setComponentEnabledSetting(it, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
+                    }
+                }
+            }
         }
 
         /** Erst das neue Symbol aktivieren, dann die anderen abschalten, damit nie keins aktiv ist. */

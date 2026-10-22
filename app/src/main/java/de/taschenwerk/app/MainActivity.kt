@@ -10,6 +10,7 @@ import de.taschenwerk.app.alarm.TimerStore
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        runCatching { de.taschenwerk.app.util.AppIcon.migrate(this) }
         enableEdgeToEdge()
         TimerStore.load(this)
         runCatching { AlarmScheduler.rescheduleAll(this) }

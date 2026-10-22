@@ -141,6 +141,49 @@ fun AlarmsPage(nav: Nav) {
 
             if (check >= 0 && !Perms.allOk(ctx)) ReliabilityCard()
 
+            // Welcher Wecker auf der Startseite steht (Tippen dort öffnet ihn direkt zum Einstellen)
+            if (store.alarms.isNotEmpty()) {
+                var homeId by remember { mutableIntStateOf(store.getLong("homeAlarm", -1L).toInt()) }
+                var pickHome by remember { mutableStateOf(false) }
+                val chosen = store.alarms.firstOrNull { it.id == homeId }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { pickHome = true }
+                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TwIcon(Ic.home, tint = p.sub, size = 18.dp)
+                    Text("Startwecker", color = p.sub, fontSize = 14.sp, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                    Text(
+                        chosen?.let { "${two(it.hour)}:${two(it.minute)}" + if (it.label.isNotBlank()) " · ${it.label}" else "" } ?: "Automatisch",
+                        color = p.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1
+                    )
+                    TwIcon(Ic.chevRight, tint = p.muted, size = 16.dp, modifier = Modifier.padding(start = 4.dp))
+                }
+                if (pickHome) {
+                    AlertDialog(
+                        onDismissRequest = { pickHome = false },
+                        containerColor = p.card,
+                        title = { Text("Wecker auf der Startseite", color = p.ink) },
+                        text = {
+                            Column {
+                                fun set(id: Int) { homeId = id; store.putLong("homeAlarm", id.toLong()); pickHome = false }
+                                SoundRow("Automatisch (nächster Wecker)", homeId == -1 || chosen == null) { set(-1) }
+                                store.alarms.forEach { a ->
+                                    SoundRow(
+                                        "${two(a.hour)}:${two(a.minute)}" + if (a.label.isNotBlank()) " · ${a.label}" else "",
+                                        a.id == homeId
+                                    ) { set(a.id) }
+                                }
+                            }
+                        },
+                        confirmButton = { TextButton({ pickHome = false }) { Text("Schließen", color = p.sub) } }
+                    )
+                }
+            }
+
             store.alarms.forEach { a ->
                 Card(onClick = { nav.overlay = Overlay.EditAlarm(a.id) }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

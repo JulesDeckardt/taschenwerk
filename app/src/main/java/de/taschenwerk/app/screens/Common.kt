@@ -1,5 +1,6 @@
 package de.taschenwerk.app.screens
 
+import androidx.compose.animation.togetherWith
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
@@ -258,3 +259,75 @@ val CITIES: List<Pair<String, String>> = listOf(
 
 fun cityForZone(zone: String): String =
     CITIES.firstOrNull { it.second == zone }?.first ?: zone.substringAfterLast('/').replace('_', ' ')
+
+/**
+ * Text, bei dem neu getippte Zeichen sanft einblenden statt hart zu erscheinen (Rechner-Anzeige).
+ */
+@androidx.compose.runtime.Composable
+fun TypingText(
+    text: String,
+    style: androidx.compose.ui.text.TextStyle,
+    color: androidx.compose.ui.graphics.Color,
+    modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
+    maxLines: Int = 1
+) {
+    val shown = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(text) }
+    val grow = text.length > shown.value.length && text.startsWith(shown.value)
+    val added = if (grow) text.length - shown.value.length else 0
+    val a = androidx.compose.runtime.remember(text) { androidx.compose.animation.core.Animatable(if (grow) 0f else 1f) }
+    val n = androidx.compose.runtime.remember(text) { added }
+    androidx.compose.runtime.LaunchedEffect(text) {
+        shown.value = text
+        a.animateTo(1f, androidx.compose.animation.core.tween(200))
+    }
+    androidx.compose.material3.Text(
+        androidx.compose.ui.text.buildAnnotatedString {
+            val k = if (a.value < 1f) n.coerceAtMost(text.length) else 0
+            append(text.dropLast(k))
+            if (k > 0) withStyle(androidx.compose.ui.text.SpanStyle(color = color.copy(alpha = a.value))) { append(text.takeLast(k)) }
+        },
+        style = style, color = color, maxLines = maxLines, modifier = modifier,
+        textAlign = androidx.compose.ui.text.style.TextAlign.End
+    )
+}
+
+/** Was die Rechner-Anzeige zeigt: vor „=“ Rechnung groß + Vorschau, danach Ergebnis groß + Rechnung darüber. */
+data class CalcDisp(val done: Boolean, val above: String, val big: String, val below: String)
+
+/** Anzeige mit sanftem Übergang beim „=“: das Ergebnis rückt von unten nach oben ins Große. */
+@androidx.compose.runtime.Composable
+fun CalcDisplay(
+    d: CalcDisp,
+    bigStyle: (String) -> androidx.compose.ui.text.TextStyle,
+    smallStyle: androidx.compose.ui.text.TextStyle,
+    ink: androidx.compose.ui.graphics.Color,
+    sub: androidx.compose.ui.graphics.Color,
+    muted: androidx.compose.ui.graphics.Color,
+    modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier
+) {
+    androidx.compose.animation.AnimatedContent(
+        targetState = d,
+        contentKey = { it.done },
+        transitionSpec = {
+            (androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(280)) { it / 3 } +
+                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(280))) togetherWith
+                (androidx.compose.animation.slideOutVertically(androidx.compose.animation.core.tween(220)) { -it / 3 } +
+                    androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(180)))
+        },
+        contentAlignment = androidx.compose.ui.Alignment.BottomEnd,
+        modifier = modifier,
+        label = "calc"
+    ) { s ->
+        androidx.compose.foundation.layout.Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+            if (s.done) {
+                androidx.compose.material3.Text(s.above, style = smallStyle, color = sub, maxLines = 1)
+                androidx.compose.material3.Text(s.big, style = bigStyle(s.big), color = ink, maxLines = 1)
+            } else {
+                TypingText(s.big, bigStyle(s.big), if (s.big == "0") muted else ink)
+                androidx.compose.animation.Crossfade(s.below, animationSpec = androidx.compose.animation.core.tween(160), label = "prev") { b ->
+                    androidx.compose.material3.Text(b, style = smallStyle, color = sub, maxLines = 1)
+                }
+            }
+        }
+    }
+}

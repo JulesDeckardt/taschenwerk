@@ -348,13 +348,15 @@ fun CalcTile() {
             verticalArrangement = Arrangement.Bottom,
             horizontalAlignment = Alignment.End
         ) {
-            if (justEval) {
-                Text(lastExpr, style = num(16.sp, FontWeight.Normal), color = p.sub, maxLines = 1)
-                Text(current?.let { fmt(it, 8) } ?: expr, style = num(30.sp), color = p.ink, maxLines = 1)
-            } else {
-                Text(expr.ifEmpty { "0" }, style = num(30.sp), color = if (expr.isEmpty()) p.muted else p.ink, maxLines = 1)
-                Text(preview?.let { fmt(it, 8) } ?: "", style = num(16.sp, FontWeight.Normal), color = p.sub, maxLines = 1)
-            }
+            CalcDisplay(
+                CalcDisp(
+                    justEval, lastExpr,
+                    if (justEval) current?.let { fmt(it, 8) } ?: expr else expr.ifEmpty { "0" },
+                    preview?.let { fmt(it, 8) } ?: ""
+                ),
+                bigStyle = { num(30.sp) }, smallStyle = num(16.sp, FontWeight.Normal),
+                ink = p.ink, sub = p.sub, muted = p.muted
+            )
         }
         Spacer(Modifier.height(8.dp))
         val rows = listOf(

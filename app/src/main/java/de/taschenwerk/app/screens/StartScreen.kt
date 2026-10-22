@@ -232,12 +232,15 @@ fun StartScreen(nav: Nav) {
                     }
                     "alarm" -> {
                         // Wecker – kompakt: nur der nächste Wecker, Tippen öffnet alle
-                        val next = store.alarms.filter { it.enabled }.minByOrNull { AlarmScheduler.nextTrigger(it).toEpochSecond() }
+                        // Startwecker (unter Uhr → Wecker wählbar), sonst automatisch der nächste
+                        val homeId = store.getLong("homeAlarm", -1L).toInt()
+                        val next = store.alarms.firstOrNull { it.id == homeId }
+                            ?: store.alarms.filter { it.enabled }.minByOrNull { AlarmScheduler.nextTrigger(it).toEpochSecond() }
                             ?: store.alarms.firstOrNull()
                         Card(
                             modifier = Modifier.heightIn(min = CARD_MIN),
                             padding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
-                            onClick = { if (next == null) nav.overlay = Overlay.EditAlarm(null) else nav.go(Tab.UHR, 0) }
+                            onClick = { nav.overlay = Overlay.EditAlarm(next?.id) }
                         ) {
                             Row(Modifier.heightIn(min = CARD_MIN - 20.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (next == null) {

@@ -219,21 +219,20 @@ fun CalcPage() {
                 verticalArrangement = Arrangement.Bottom,
                 horizontalAlignment = Alignment.End
             ) {
-                if (above.isNotEmpty()) {
-                    Text(above, style = num(26.sp, FontWeight.Normal), color = p.sub, maxLines = 2, textAlign = TextAlign.End)
-                    Spacer(Modifier.height(4.dp))
-                }
-                val size = when {
-                    big.length > 16 -> 34.sp
-                    big.length > 11 -> 44.sp
-                    big.length > 8 -> 54.sp
-                    else -> 64.sp
-                }
-                Text(big, style = num(size), color = p.ink, maxLines = 2, textAlign = TextAlign.End)
-                // Platz für die graue Vorschau immer freihalten, damit nichts springt
-                Text(
-                    below, style = num(30.sp, FontWeight.Normal), color = p.sub, maxLines = 1, textAlign = TextAlign.End,
-                    modifier = Modifier.padding(top = 4.dp)
+                CalcDisplay(
+                    CalcDisp(CalcState.justEval, above, big, below),
+                    bigStyle = { t ->
+                        num(
+                            when {
+                                t.length > 16 -> 34.sp
+                                t.length > 11 -> 44.sp
+                                t.length > 8 -> 54.sp
+                                else -> 64.sp
+                            }
+                        )
+                    },
+                    smallStyle = num(28.sp, FontWeight.Normal),
+                    ink = p.ink, sub = p.sub, muted = p.muted
                 )
             }
             if (CalcState.sci) {

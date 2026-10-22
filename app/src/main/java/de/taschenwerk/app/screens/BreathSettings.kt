@@ -913,7 +913,7 @@ private fun AppIconCard() {
     Card {
         Text("App-Symbol", color = p.ink, fontSize = 16.sp)
         Spacer(Modifier.height(12.dp))
-        de.taschenwerk.app.util.AppIcon.entries.chunked(4).forEach { row ->
+        de.taschenwerk.app.util.AppIcon.entries.chunked(5).forEach { row ->
             Row(Modifier.fillMaxWidth()) {
                 row.forEach { ic ->
                     val sel = ic == cur
@@ -926,14 +926,14 @@ private fun AppIconCard() {
                     ) {
                         Box(
                             Modifier
-                                .size(62.dp)
-                                .border(2.dp, if (sel) p.ink else Color.Transparent, RoundedCornerShape(18.dp))
+                                .size(56.dp)
+                                .border(2.dp, if (sel) p.ink else Color.Transparent, RoundedCornerShape(16.dp))
                                 .padding(5.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             androidx.compose.foundation.Image(
                                 androidx.compose.ui.res.painterResource(ic.preview), ic.label,
-                                Modifier.size(52.dp)
+                                Modifier.size(46.dp)
                             )
                         }
                         Spacer(Modifier.height(4.dp))
@@ -943,7 +943,7 @@ private fun AppIconCard() {
                         )
                     }
                 }
-                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
