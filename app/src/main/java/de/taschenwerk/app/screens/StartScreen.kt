@@ -272,6 +272,7 @@ fun StartScreen(nav: Nav) {
                     "altitude" -> AltitudeTile(nav, CARD_MIN)
                     "breath" -> BreathMini()
                     "calc" -> CalcTile()
+                    "notes" -> NotesTile()
                 }
             }
         }

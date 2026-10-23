@@ -81,8 +81,8 @@ import kotlin.math.roundToInt
 
 /** Welche Kacheln die Startseite zeigt (in dieser Reihenfolge) und wie die Schnellzugriffe belegt sind. */
 object HomeCfg {
-    val ALL_TILES = listOf("weather", "alarm", "currency", "altitude", "breath", "calc")
-    private val DEFAULT_ON = setOf("weather", "alarm", "currency")
+    val ALL_TILES = listOf("weather", "alarm", "currency", "altitude", "breath", "calc", "notes")
+    private val DEFAULT_ON = setOf("weather", "alarm", "currency", "notes")
 
     var tiles by mutableStateOf(ALL_TILES.map { it to (it in DEFAULT_ON) })
     var quick by mutableStateOf(listOf("timerX", "workout", "timer", "stopwatch"))
@@ -98,7 +98,13 @@ object HomeCfg {
                 if (parts.size == 2 && parts[0] in ALL_TILES) parts[0] to (parts[1] == "1") else null
             }
             // Neue Kachel-Arten, die es beim Speichern noch nicht gab, hinten anhängen (aus)
-            tiles = parsed + ALL_TILES.filter { id -> parsed.none { it.first == id } }.map { it to false }
+            var t = parsed + ALL_TILES.filter { id -> id != "notes" && parsed.none { it.first == id } }.map { it to false }
+            // Die Notiz (neu in 8.0) kommt eingeschaltet direkt unter den Rechner
+            if (t.none { it.first == "notes" }) {
+                val at = t.indexOfFirst { it.first == "calc" }.let { if (it < 0) t.size else it + 1 }
+                t = t.toMutableList().apply { add(at, "notes" to true) }
+            }
+            tiles = t
         }
         store.getString("homeQuick")?.split(",")?.takeIf { it.size == 4 }?.let { quick = it }
         timerMin = store.getLong("homeTimerMin", 60L).toInt()
@@ -116,6 +122,7 @@ object HomeCfg {
         "currency" -> "Währung"
         "altitude" -> "Höhe"
         "breath" -> "Breath"
+        "notes" -> "Notiz"
         else -> "Rechner"
     }
 
@@ -125,6 +132,7 @@ object HomeCfg {
         "currency" -> Ic.money
         "altitude" -> Ic.mountain
         "breath" -> Ic.breath
+        "notes" -> Ic.edit
         else -> Ic.calc
     }
 }
@@ -272,129 +280,8 @@ fun AltitudeTile(nav: Nav, minHeight: androidx.compose.ui.unit.Dp) {
 /** Brücke von der Rechner-Kachel zur Währungskachel. */
 object CalcBridge {
     var push by mutableStateOf<String?>(null)
-}
-
-/**
- * Rechner kompakt mit eigenem Ziffernblock (keine Handy-Tastatur, damit die Währung darunter sichtbar bleibt).
- * Anzeige wie gewohnt: beim Tippen die Rechnung groß und das Ergebnis klein und grau darunter,
- * nach „=“ das Ergebnis groß und die Rechnung klein darüber.
- */
-@Composable
-fun CalcTile() {
-    val ctx = LocalContext.current
-    val store = remember { Store.get(ctx) }
-    val p = LocalPal.current
-    var expr by remember { mutableStateOf("") }
-    var lastExpr by remember { mutableStateOf("") }
-    var justEval by remember { mutableStateOf(false) }
-    val ops = "÷×−+"
-    fun eval(e: String) = if (e.isBlank()) null
-    else runCatching { Expr(e.replace(',', '.').replace('−', '-'), true).eval() }.getOrNull()?.takeIf { !it.isNaN() && !it.isInfinite() }
-    val hasOp = expr.drop(1).any { it in ops || it == '%' }
-    val preview = if (!justEval && hasOp) eval(expr) else null
-    val current = if (justEval) eval(expr) else preview ?: eval(expr)
-
-    fun press(k: String) {
-        val last = expr.lastOrNull()
-        when (k) {
-            "AC" -> { expr = ""; lastExpr = ""; justEval = false }
-            "⌫" -> { expr = expr.dropLast(1); justEval = false }
-            "=" -> eval(expr)?.let { r ->
-                if (hasOp) {
-                    lastExpr = expr
-                    expr = fmt(r, 8).replace(".", "")
-                    justEval = true
-                }
-            }
-            "÷", "×", "−", "+" -> {
-                justEval = false
-                expr = when {
-                    expr.isEmpty() -> if (k == "−") "−" else ""
-                    last != null && last in ops -> expr.dropLast(1) + k
-                    else -> expr + k
-                }
-            }
-            "%" -> if (last != null && last.isDigit()) { expr += "%"; justEval = false }
-            "," -> {
-                if (justEval) { expr = "0,"; justEval = false; return }
-                val seg = expr.takeLastWhile { it.isDigit() || it == ',' }
-                if (!seg.contains(',')) expr += if (seg.isEmpty()) "0," else ","
-            }
-            else -> {
-                expr = if (justEval) k else (expr + k).take(40)
-                justEval = false
-            }
-        }
-    }
-
-    Card(padding = PaddingValues(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Rechner", color = p.sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 2.dp))
-            if (current != null) Text(
-                "→ ${store.mainCur}", color = p.ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(p.track)
-                    .clickable { CalcBridge.push = fmt(current, 2) }
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            )
-        }
-        // Anzeige mit fester Höhe, damit beim Wechsel nichts springt
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .height(66.dp)
-                .padding(horizontal = 4.dp),
-            verticalArrangement = Arrangement.Bottom,
-            horizontalAlignment = Alignment.End
-        ) {
-            CalcDisplay(
-                CalcDisp(
-                    justEval, lastExpr,
-                    if (justEval) current?.let { fmt(it, 8) } ?: expr else expr.ifEmpty { "0" },
-                    preview?.let { fmt(it, 8) } ?: ""
-                ),
-                bigStyle = { num(30.sp) }, smallStyle = num(16.sp, FontWeight.Normal),
-                ink = p.ink, sub = p.sub, muted = p.muted
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        val rows = listOf(
-            listOf("7", "8", "9", "÷", "⌫"),
-            listOf("4", "5", "6", "×", "AC"),
-            listOf("1", "2", "3", "−", "%"),
-            listOf("0", "00", ",", "+", "=")
-        )
-        rows.forEachIndexed { ri, r ->
-            if (ri > 0) Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                r.forEach { k ->
-                    val digit = k[0].isDigit() || k == ","
-                    val bg = when {
-                        k == "=" -> p.fill
-                        digit -> p.card
-                        else -> p.track
-                    }
-                    val shape = RoundedCornerShape(50)
-                    var m = Modifier
-                        .weight(1f)
-                        .height(40.dp)
-                        .clip(shape)
-                        .background(bg)
-                    if (digit && p.cardRing != androidx.compose.ui.graphics.Color.Transparent) {
-                        m = m.border(1.dp, p.cardRing, shape)
-                    }
-                    Box(m.clickable { press(k) }, contentAlignment = Alignment.Center) {
-                        if (k == "⌫") TwIcon(Ic.backspace, size = 20.dp)
-                        else Text(
-                            k, color = if (k == "=") p.onFill else p.ink,
-                            fontSize = if (digit) 19.sp else 17.sp, fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-        }
-    }
+    /** Summe aus der Notiz für die Rechner-Kachel. */
+    var toCalc by mutableStateOf<String?>(null)
 }
 
 // ------------------------------------------------------------------ Einstellungen → Startseite
