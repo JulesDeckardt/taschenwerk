@@ -128,9 +128,9 @@ object HomeCfg {
     }
 
     fun tileName(id: String) = when (id) {
-        "date" -> "Datum & Uhrzeiten"
+        "date" -> "Datum (oben)"
         "weather" -> "Wetter & Höhe"
-        "alarm" -> "Uhr · Wecker & Timer"
+        "alarm" -> "Zeit & Wecker"
         "currency" -> "Währung"
         "altitude" -> "Höhe"
         "breath" -> "Breath"
@@ -409,12 +409,12 @@ fun HomeSettingsPage(onBack: () -> Unit) {
             SettingLabel("Kacheln · halten und ziehen zum Sortieren")
             Card(padding = PaddingValues(horizontal = 14.dp, vertical = 2.dp)) { TileList(store) }
 
-            SettingLabel("Uhr-Kachel")
+            SettingLabel("Zeit-Kachel")
             Card(padding = PaddingValues(12.dp)) {
                 RowItem("Timer, Intervall, Stoppuhr zeigen", trailing = {
                     Toggle(HomeCfg.quickOn) { HomeCfg.quickOn = it; HomeCfg.save(store) }
                 })
-                Text("in der Uhr-Kachel unter dem Wecker", color = p.sub, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                Text("in der Zeit-Kachel unter den Uhrzeiten", color = p.sub, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
                 if (HomeCfg.quickOn) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     HomeCfg.quick.forEachIndexed { i, id ->
                         val d = quickDef(id)

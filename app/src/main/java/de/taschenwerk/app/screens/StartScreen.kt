@@ -141,14 +141,12 @@ fun StartScreen(nav: Nav) {
             }
             // Kacheln in der eingestellten Reihenfolge (Einstellungen → Startseite)
             val shown = HomeCfg.tiles.filter { it.second }.map { it.first }
-            // Datum und direkt folgendes Wetter bilden eine gemeinsame Kopf-Kachel
-            val joined = shown.indexOf("date").let { i -> i >= 0 && shown.getOrNull(i + 1) == "weather" }
             shown.forEach { tileId ->
                 key(tileId) {
                     when (tileId) {
-                        "date" -> HeadTile(nav, store, withWeather = joined, askLocation = askLocation)
-                        "weather" -> if (!joined) WeatherTile(nav, store, askLocation)
-                        "alarm" -> ClockTile(nav, store)
+                        "date" -> DateHeader(nav)
+                        "weather" -> WeatherTile(nav, store, askLocation)
+                        "alarm" -> TimeTile(nav, store)
                         "currency" -> Box {
                             CurrencyCard(store, endPad = if (showOpenArrows) 28.dp else 16.dp)
                             if (showOpenArrows) Box(

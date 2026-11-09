@@ -33,6 +33,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
@@ -215,50 +217,35 @@ fun rememberHomeAltitude(store: Store): Double? {
     return alt
 }
 
+/** Datum frei oben (ohne Kachel), rechts daneben ⋮ für die Einstellungen. */
 @Composable
-private fun DateRow(nav: Nav, store: Store) {
+fun DateHeader(nav: Nav) {
     val p = LocalPal.current
     val now by rememberNow(1000)
-    val there = secondTime(store, ZonedDateTime.now())
+    val wd = now.format(DateTimeFormatter.ofPattern("EE", Locale.GERMAN)).removeSuffix(".")
+    val mon = now.format(DateTimeFormatter.ofPattern("MMM", Locale.GERMAN)).removeSuffix(".")
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { nav.go(Tab.UHR, 3) },
+            .height(44.dp)
+            .padding(start = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Kalenderblatt
-        Column(
-            Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(p.fill.copy(alpha = if (p.dark) 0.22f else 0.42f)),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
+        Row(Modifier.weight(1f)) {
             Text(
-                now.format(DateTimeFormatter.ofPattern("MMM", Locale.GERMAN)).take(3).uppercase(Locale.GERMAN),
-                color = p.sub, fontSize = 9.sp, fontWeight = FontWeight.Bold, lineHeight = 10.sp
+                "$wd, ${now.dayOfMonth}. $mon", color = p.ink, fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                maxLines = 1, modifier = Modifier.alignByBaseline()
             )
-            Text("${now.dayOfMonth}", color = p.ink, style = num(17.sp, FontWeight.Bold).copy(lineHeight = 18.sp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
+            Spacer(Modifier.width(10.dp))
             Text(
-                now.format(DateTimeFormatter.ofPattern("EEEE", Locale.GERMAN)),
-                color = p.ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1
+                "KW ${now.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR)}", color = p.sub, fontSize = 13.sp,
+                maxLines = 1, modifier = Modifier.alignByBaseline()
             )
-            Text("KW ${now.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR)}", color = p.sub, fontSize = 12.sp)
         }
-        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            ClockLine(shortCity(ZoneId.systemDefault().id), "${two(now.hour)}:${two(now.minute)}")
-            ClockLine(shortCity(secondZone(store)), "${two(there.hour)}:${two(there.minute)}")
-        }
-        // ⋮ ohne Kreis, mit etwas Abstand
         Box(
             Modifier
-                .padding(start = 4.dp)
-                .size(width = 30.dp, height = 40.dp)
+                .offset(x = 8.dp)
+                .size(width = 36.dp, height = 40.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .clickable { nav.overlay = Overlay.Settings },
             contentAlignment = Alignment.Center
@@ -266,30 +253,48 @@ private fun DateRow(nav: Nav, store: Store) {
     }
 }
 
+/**
+ * Text in einer Zeile, der bei Platzmangel automatisch kleiner wird statt abgeschnitten zu werden
+ * (z. B. bei großer Systemschrift). Wird erst gezeichnet, wenn er passt.
+ */
 @Composable
-private fun ClockLine(city: String, time: String) {
-    val p = LocalPal.current
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(city, color = p.sub, fontSize = 12.sp, maxLines = 1)
-        Spacer(Modifier.width(7.dp))
-        Text(time, color = p.ink, style = num(15.sp, FontWeight.SemiBold))
-    }
+fun FitText(
+    text: String,
+    color: androidx.compose.ui.graphics.Color,
+    style: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier,
+    min: Float = 8f
+) {
+    val base = style.fontSize
+    var cur by remember(text, base) { mutableStateOf(base) }
+    var ready by remember(text, base) { mutableStateOf(false) }
+    Text(
+        text, color = color, style = style.copy(fontSize = cur), maxLines = 1, softWrap = false,
+        modifier = modifier.drawWithContent { if (ready) drawContent() },
+        onTextLayout = { r ->
+            if (r.didOverflowWidth && cur.value > min) cur = (cur.value * 0.92f).coerceAtLeast(min).sp
+            else ready = true
+        }
+    )
 }
 
 @Composable
 private fun Metric(icon: androidx.compose.ui.graphics.vector.ImageVector, tint: androidx.compose.ui.graphics.Color, value: String, unit: String, onClick: (() -> Unit)? = null) {
     val p = LocalPal.current
-    var m = Modifier.height(22.dp)
+    var m = Modifier
+        .fillMaxWidth()
+        .height(22.dp)
     if (onClick != null) m = m
         .clip(RoundedCornerShape(6.dp))
         .clickable { onClick() }
     Row(m, verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.width(16.dp), contentAlignment = Alignment.Center) { TwIcon(icon, size = 15.dp, tint = tint) }
         Spacer(Modifier.width(8.dp))
-        Text(value, color = p.ink, style = num(14.sp, FontWeight.SemiBold), maxLines = 1, softWrap = false)
+        FitText(value, p.ink, num(14.sp, FontWeight.SemiBold), min = 9f)
         if (unit.isNotEmpty()) {
             Spacer(Modifier.width(5.dp))
-            Text(unit, color = p.sub, fontSize = 12.5.sp, maxLines = 1, softWrap = false)
+            // Einheit schrumpft bei Platzmangel, statt abgeschnitten zu werden
+            FitText(unit, p.sub, androidx.compose.ui.text.TextStyle(fontSize = 12.5.sp), Modifier.weight(1f, fill = false), min = 8f)
         }
     }
 }
@@ -315,16 +320,15 @@ private fun WeatherBlock(nav: Nav, store: Store, askLocation: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(Modifier.height(46.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.height(46.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     TwIcon(
                         if (w != null) w.look.icon else Ic.cloudSun, size = 46.dp,
                         tint = if (w != null) weatherTint(w.look.tint, w.day) else p.fill
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        if (w != null) "${w.temp.roundToInt()}°" else "–",
-                        color = p.ink, style = num(46.sp, FontWeight.SemiBold).copy(lineHeight = 46.sp),
-                        maxLines = 1, softWrap = false
+                    FitText(
+                        if (w != null) "${w.temp.roundToInt()}°" else "–", p.ink,
+                        num(46.sp, FontWeight.SemiBold).copy(lineHeight = 46.sp), Modifier.weight(1f, fill = false), min = 24f
                     )
                 }
                 Row(Modifier.height(22.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -370,23 +374,11 @@ private fun WeatherBlock(nav: Nav, store: Store, askLocation: () -> Unit) {
     }
 }
 
-/** Kopf-Kachel: Datum und Uhrzeiten, darunter (wenn eingeschaltet) das Wetter. */
-@Composable
-fun HeadTile(nav: Nav, store: Store, withWeather: Boolean, askLocation: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth(), padding = PaddingValues(start = 16.dp, end = 10.dp, top = 14.dp, bottom = 14.dp)) {
-        DateRow(nav, store)
-        if (withWeather) {
-            Box(Modifier.padding(end = 6.dp)) { Column { BleedDivider(16.dp, 12.dp) } }
-            Box(Modifier.padding(end = 6.dp)) { WeatherBlock(nav, store, askLocation) }
-        }
-    }
-}
-
-/** Wetter allein (wenn die Datums-Kachel aus ist oder woanders steht). */
+/** Wetter-Kachel: Symbol + Temperatur + Ort links, Höhe/Sonne/Taupunkt rechts. */
 @Composable
 fun WeatherTile(nav: Nav, store: Store, askLocation: () -> Unit) {
     Box {
-        Card(modifier = Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)) {
+        Card(modifier = Modifier.fillMaxWidth(), padding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp)) {
             WeatherBlock(nav, store, askLocation)
         }
         OpenArrow()
@@ -396,75 +388,103 @@ fun WeatherTile(nav: Nav, store: Store, askLocation: () -> Unit) {
 // ------------------------------------------------------------------ Uhr-Kachel: Wecker + Schnellzugriffe
 
 @Composable
-private fun AlarmRow(nav: Nav, store: Store) {
+private fun HeadCell(t: String) {
+    Box(Modifier.height(16.dp), contentAlignment = Alignment.CenterStart) {
+        Text(t, color = LocalPal.current.sub, fontSize = 11.sp, maxLines = 1)
+    }
+}
+
+@Composable
+private fun TimeCell(t: String, c: androidx.compose.ui.graphics.Color) {
+    Box(Modifier.height(28.dp), contentAlignment = Alignment.CenterStart) {
+        FitText(t, c, num(21.sp, FontWeight.SemiBold).copy(lineHeight = 24.sp), min = 12f)
+    }
+}
+
+@Composable
+private fun CityCell(icon: androidx.compose.ui.graphics.vector.ImageVector, name: String) {
+    val p = LocalPal.current
+    Row(Modifier.height(28.dp), verticalAlignment = Alignment.CenterVertically) {
+        TwIcon(icon, size = 14.dp, tint = p.sub)
+        Spacer(Modifier.width(6.dp))
+        FitText(name, p.sub, androidx.compose.ui.text.TextStyle(fontSize = 13.sp), min = 9f)
+    }
+}
+
+/**
+ * Zeit-Kachel als kleine Tabelle: Spalten „Jetzt“ und „Wecker“ (linksbündig über den Zeiten),
+ * Zeilen eigene Stadt und zweite Stadt; rechts der Wecker-Schalter, darunter die Schnellzugriffe.
+ */
+@Composable
+fun TimeTile(nav: Nav, store: Store) {
     val ctx = LocalContext.current
     val p = LocalPal.current
+    val now by rememberNow(1000)
+    val there = secondTime(store, ZonedDateTime.now())
     // Startwecker (unter Uhr → Wecker wählbar), sonst automatisch der nächste
     val homeId = store.getLong("homeAlarm", -1L).toInt()
     val next = store.alarms.firstOrNull { it.id == homeId }
         ?: store.alarms.filter { it.enabled }.minByOrNull { AlarmScheduler.nextTrigger(it).toEpochSecond() }
         ?: store.alarms.firstOrNull()
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 50.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { nav.overlay = Overlay.EditAlarm(next?.id) },
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (next == null) {
-            Text("Wecker", color = p.sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.width(12.dp))
-            Text("Noch keiner – tippen zum Anlegen", color = p.ink, fontSize = 15.sp, modifier = Modifier.weight(1f))
-        } else {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text(
-                    "${two(next.hour)}:${two(next.minute)}",
-                    color = if (next.enabled) p.ink else p.muted,
-                    style = num(28.sp, FontWeight.SemiBold).copy(lineHeight = 31.sp)
-                )
-                val trig = AlarmScheduler.nextTrigger(next)
-                val first = next.label.ifBlank { trig.format(DateTimeFormatter.ofPattern("EE", Locale.GERMAN)) }
-                Text(
-                    first + if (next.enabled) " · ${untilText(next)}" else "",
-                    color = p.sub, fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
-                )
-            }
-            Box(
-                Modifier
-                    .padding(horizontal = 14.dp)
-                    .size(width = 1.dp, height = 34.dp)
-                    .background(p.line)
-            )
-            val there = secondTime(store, AlarmScheduler.nextTrigger(next))
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text(shortCity(secondZone(store)), color = p.sub, fontSize = 11.5.sp, maxLines = 1)
-                Text(
-                    "${two(there.hour)}:${two(there.minute)}",
-                    color = if (next.enabled) p.ink else p.muted,
-                    style = num(17.sp, FontWeight.SemiBold).copy(lineHeight = 19.sp)
-                )
-            }
-            Spacer(Modifier.width(14.dp))
-            Box(Modifier.padding(end = if (showOpenArrows) 8.dp else 0.dp)) {
-                Toggle(next.enabled) { on ->
-                    val na = next.copy(enabled = on)
-                    store.upsertAlarm(na)
-                    AlarmScheduler.schedule(ctx, na)
-                }
-            }
-        }
-    }
-}
-
-/** Uhr-Kachel: Wecker oben, darunter (falls eingeschaltet) die drei Schnellzugriffe. */
-@Composable
-fun ClockTile(nav: Nav, store: Store) {
+    val trigThere = next?.let { secondTime(store, AlarmScheduler.nextTrigger(it)) }
+    val on = next?.enabled == true
     Box {
         Card(modifier = Modifier.fillMaxWidth(), padding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 14.dp)) {
-            AlarmRow(nav, store)
+            Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1.1f)) {
+                    Spacer(Modifier.height(18.dp))
+                    CityCell(Ic.pin, shortCity(ZoneId.systemDefault().id))
+                    Spacer(Modifier.height(4.dp))
+                    CityCell(Ic.globe, shortCity(secondZone(store)))
+                }
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { nav.go(Tab.UHR, 3) }
+                ) {
+                    HeadCell("Jetzt")
+                    Spacer(Modifier.height(2.dp))
+                    TimeCell("${two(now.hour)}:${two(now.minute)}", p.ink)
+                    Spacer(Modifier.height(4.dp))
+                    TimeCell("${two(there.hour)}:${two(there.minute)}", p.ink)
+                }
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { nav.overlay = Overlay.EditAlarm(next?.id) }
+                ) {
+                    HeadCell("Wecker")
+                    Spacer(Modifier.height(2.dp))
+                    TimeCell(next?.let { "${two(it.hour)}:${two(it.minute)}" } ?: "–", if (on) p.ink else p.muted)
+                    Spacer(Modifier.height(4.dp))
+                    TimeCell(trigThere?.let { "${two(it.hour)}:${two(it.minute)}" } ?: "–", if (on) p.sub else p.muted)
+                }
+                Box(
+                    Modifier
+                        .padding(horizontal = 14.dp, vertical = 2.dp)
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(p.line)
+                )
+                Box(Modifier.padding(end = if (showOpenArrows) 8.dp else 0.dp)) {
+                    if (next != null) Toggle(next.enabled) { v ->
+                        val na = next.copy(enabled = v)
+                        store.upsertAlarm(na)
+                        AlarmScheduler.schedule(ctx, na)
+                    } else Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(p.track)
+                            .clickable { nav.overlay = Overlay.EditAlarm(null) },
+                        contentAlignment = Alignment.Center
+                    ) { TwIcon(Ic.plus, size = 18.dp, desc = "Wecker anlegen") }
+                }
+            }
             if (HomeCfg.quickOn && HomeCfg.quick.isNotEmpty()) {
-                BleedDivider(16.dp, 12.dp)
+                BleedDivider(16.dp, 14.dp)
                 QuickRow(nav, store)
             }
         }
@@ -489,20 +509,24 @@ private fun QuickPill(q: QuickDef, time: String?, on: Boolean, onClick: () -> Un
     val strong = time != null || on
     Row(
         Modifier
-            .height(44.dp)
-            .clip(RoundedCornerShape(15.dp))
+            .height(42.dp)
+            .clip(RoundedCornerShape(14.dp))
             .background(if (strong) p.fill else p.fill.copy(alpha = if (p.dark) 0.22f else 0.42f))
             .clickable { onClick() }
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
         val tint = if (strong) p.onFill else p.ink
-        if (q.icon != null) TwIcon(q.icon, size = 18.dp, tint = tint)
-        else Text(q.badge ?: "", style = num(14.sp, FontWeight.Bold), color = tint)
-        Spacer(Modifier.width(6.dp))
-        if (time != null) Text(time, style = num(15.sp, FontWeight.Bold), color = tint, maxLines = 1, softWrap = false)
-        else Text(q.label, color = tint, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+        if (q.icon != null) TwIcon(q.icon, size = 17.dp, tint = tint)
+        else Text(q.badge ?: "", style = num(13.sp, FontWeight.Bold), color = tint)
+        Spacer(Modifier.width(5.dp))
+        // schrumpft bei Platzmangel, statt abgeschnitten zu werden
+        FitText(
+            time ?: q.label, tint,
+            if (time != null) num(14.5.sp, FontWeight.Bold) else androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Bold),
+            Modifier.weight(1f, fill = false), min = 8f
+        )
     }
 }
 
@@ -549,9 +573,9 @@ fun MiniDock(nav: Nav) {
                     val tint = if (strong) p.onFill else p.ink
                     if (d.icon != null) TwIcon(d.icon, size = 18.dp, tint = tint)
                     Spacer(Modifier.height(3.dp))
-                    Text(
-                        time ?: dockLabel(id), color = tint, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    FitText(
+                        time ?: dockLabel(id), tint,
+                        androidx.compose.ui.text.TextStyle(fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold), min = 7f
                     )
                 }
             }
