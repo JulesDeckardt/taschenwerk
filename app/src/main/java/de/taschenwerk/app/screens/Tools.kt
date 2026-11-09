@@ -52,7 +52,7 @@ import kotlin.math.sqrt
 private fun rememberSensor(vararg types: Int, onValues: (Int, FloatArray) -> Unit): Boolean {
     val ctx = LocalContext.current
     val sm = remember { ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager }
-    val sensors = remember { types.mapNotNull { sm.getDefaultSensor(it) } }
+    val sensors = remember { types.toList().mapNotNull { t -> sm.getDefaultSensor(t) } }
     DisposableEffect(Unit) {
         val l = object : SensorEventListener {
             override fun onSensorChanged(e: SensorEvent) = onValues(e.sensor.type, e.values)
