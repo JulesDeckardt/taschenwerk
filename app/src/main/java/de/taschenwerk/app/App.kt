@@ -77,6 +77,8 @@ sealed interface Overlay {
     data class EditWorkout(val id: String?) : Overlay
     data class RunWorkout(val id: String) : Overlay
     data class EditAlarm(val id: Int?) : Overlay
+    data object Compass : Overlay
+    data object Level : Overlay
 }
 
 /** Zen-Modus der Atemübung: alles außer dem Ball ausblenden. */
@@ -157,13 +159,22 @@ fun TaschenwerkApp() {
                         .fillMaxWidth()
                         .statusBarsPadding()
                 ) {
-                    when (nav.tab) {
-                        Tab.START -> StartScreen(nav)
-                        Tab.UHR -> ClockTab(nav)
-                        Tab.RECHNER -> CalcTab(nav)
-                        Tab.WETTER -> WeatherScreen()
-                        Tab.HOEHE -> AltitudeScreen()
-                        Tab.BREATH -> BreathScreen()
+                    remember { de.taschenwerk.app.screens.NavCfg.load(store); 0 }
+                    // Ohne Bereichs-Leiste bekommt jeder Bereich oben einen Zurück-Kopf
+                    val backBar = de.taschenwerk.app.screens.NavCfg.mode != de.taschenwerk.app.screens.NavCfg.TABS &&
+                        nav.tab != Tab.START && !Zen.hide
+                    Column(Modifier.fillMaxSize()) {
+                        if (backBar) de.taschenwerk.app.screens.SubHeader(nav.tab.label, { nav.go(Tab.START) })
+                        Box(Modifier.weight(1f)) {
+                            when (nav.tab) {
+                                Tab.START -> StartScreen(nav)
+                                Tab.UHR -> ClockTab(nav)
+                                Tab.RECHNER -> CalcTab(nav)
+                                Tab.WETTER -> WeatherScreen()
+                                Tab.HOEHE -> AltitudeScreen()
+                                Tab.BREATH -> BreathScreen()
+                            }
+                        }
                     }
                 }
                 // Im Zen-Modus der Atemübung blendet die Leiste aus (Platz bleibt, damit nichts springt);
@@ -172,7 +183,11 @@ fun TaschenwerkApp() {
                     if (Zen.hide) 0f else 1f, androidx.compose.animation.core.tween(900), label = "zen"
                 )
                 Box(Modifier.graphicsLayer { alpha = navAlpha }) {
-                    NavBar(nav.tab) { nav.go(it) }
+                    when (de.taschenwerk.app.screens.NavCfg.mode) {
+                        de.taschenwerk.app.screens.NavCfg.MINI -> de.taschenwerk.app.screens.MiniDock(nav)
+                        de.taschenwerk.app.screens.NavCfg.OFF -> Spacer(Modifier.navigationBarsPadding())
+                        else -> NavBar(nav.tab) { nav.go(it) }
+                    }
                     if (Zen.hide) Box(
                         Modifier
                             .matchParentSize()
@@ -196,6 +211,8 @@ fun TaschenwerkApp() {
                         is Overlay.EditWorkout -> WorkoutEditScreen(nav, ov.id)
                         is Overlay.RunWorkout -> WorkoutRunScreen(nav, ov.id)
                         is Overlay.EditAlarm -> AlarmEditScreen(nav, ov.id)
+                        Overlay.Compass -> de.taschenwerk.app.screens.CompassScreen(nav)
+                        Overlay.Level -> de.taschenwerk.app.screens.LevelScreen(nav)
                     }
                 }
             }

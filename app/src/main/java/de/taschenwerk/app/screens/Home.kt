@@ -70,6 +70,7 @@ import de.taschenwerk.app.ui.Divider
 import de.taschenwerk.app.ui.Ic
 import de.taschenwerk.app.ui.LocalPal
 import de.taschenwerk.app.ui.RowItem
+import de.taschenwerk.app.ui.Segmented
 import de.taschenwerk.app.ui.Toggle
 import de.taschenwerk.app.ui.TwIcon
 import de.taschenwerk.app.ui.num
@@ -81,12 +82,14 @@ import kotlin.math.roundToInt
 
 /** Welche Kacheln die Startseite zeigt (in dieser Reihenfolge) und wie die Schnellzugriffe belegt sind. */
 object HomeCfg {
-    val ALL_TILES = listOf("date", "weather", "quick", "alarm", "currency", "calc", "notes", "altitude", "breath")
-    private val DEFAULT_ON = setOf("date", "weather", "quick", "alarm", "currency", "calc", "notes")
+    val ALL_TILES = listOf("date", "weather", "alarm", "currency", "calc", "notes", "altitude", "breath")
+    private val DEFAULT_ON = setOf("date", "weather", "alarm", "currency", "calc", "notes")
     val DEFAULT_QUICK = listOf("timer", "workout", "stopwatch")
 
     var tiles by mutableStateOf(ALL_TILES.map { it to (it in DEFAULT_ON) })
     var quick by mutableStateOf(DEFAULT_QUICK)
+    /** Timer, Intervall, Stoppuhr in der Uhr-Kachel zeigen */
+    var quickOn by mutableStateOf(true)
     var timerMin by mutableIntStateOf(60)
     private var loaded = false
 
@@ -98,7 +101,7 @@ object HomeCfg {
                 val parts = e.split(":")
                 if (parts.size == 2 && parts[0] in ALL_TILES) parts[0] to (parts[1] == "1") else null
             }
-            val fresh = setOf("notes", "date", "quick")
+            val fresh = setOf("notes", "date")
             // Neue Kachel-Arten, die es beim Speichern noch nicht gab, hinten anhängen (aus)
             var t = parsed + ALL_TILES.filter { id -> id !in fresh && parsed.none { it.first == id } }.map { it to false }
             fun insertAfter(id: String, after: String?) {
@@ -109,25 +112,25 @@ object HomeCfg {
             // Notiz (8.0) unter den Rechner, Datum (9.0) ganz nach oben, Schnellzugriffe (9.0) unter das Wetter
             insertAfter("notes", "calc")
             insertAfter("date", null)
-            insertAfter("quick", "weather")
             tiles = t
         }
         // Ab 9.0 drei Schnellzugriffe; ältere Belegungen mit vier Plätzen werden ersetzt
         store.getString("homeQuick3")?.split(",")?.takeIf { it.size == 3 }?.let { quick = it.map { q -> if (q == "timerX") "timer" else q } }
         timerMin = store.getLong("homeTimerMin", 60L).toInt()
+        quickOn = store.getBool("homeQuickOn", true)
     }
 
     fun save(store: Store) {
         store.putString("homeTiles", tiles.joinToString(",") { "${it.first}:${if (it.second) 1 else 0}" })
         store.putString("homeQuick3", quick.joinToString(","))
+        store.putBool("homeQuickOn", quickOn)
         store.putLong("homeTimerMin", timerMin.toLong())
     }
 
     fun tileName(id: String) = when (id) {
         "date" -> "Datum & Uhrzeiten"
-        "quick" -> "Schnellzugriffe"
         "weather" -> "Wetter & Höhe"
-        "alarm" -> "Wecker"
+        "alarm" -> "Uhr · Wecker & Timer"
         "currency" -> "Währung"
         "altitude" -> "Höhe"
         "breath" -> "Breath"
@@ -137,7 +140,6 @@ object HomeCfg {
 
     fun tileIcon(id: String): ImageVector = when (id) {
         "date" -> Ic.clock
-        "quick" -> Ic.stopwatch
         "weather" -> Ic.cloud
         "alarm" -> Ic.alarm
         "currency" -> Ic.money
@@ -150,19 +152,59 @@ object HomeCfg {
 
 /** Welche Tabs der unteren Leiste ausgeblendet sind (Start bleibt immer). */
 object NavCfg {
+    const val TABS = "tabs"
+    const val MINI = "mini"
+    const val OFF = "off"
+    val DEFAULT_MINI = listOf("breath", "altitude", "conv", "percent", "workout")
+
     var hidden by mutableStateOf<Set<String>>(emptySet())
+    /** Was unten steht: Bereiche (Tabs), Mini-Knöpfe oder nichts */
+    var mode by mutableStateOf(TABS)
+    var mini by mutableStateOf(DEFAULT_MINI)
     private var loaded = false
 
     fun load(store: Store) {
         if (loaded) return
         loaded = true
         hidden = store.getString("navHidden")?.split(",")?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+        mode = store.getString("navMode")?.takeIf { it in setOf(TABS, MINI, OFF) } ?: TABS
+        mini = store.getString("navMini")?.let { r -> r.split(",").filter { it.isNotBlank() } } ?: DEFAULT_MINI
     }
 
     fun set(store: Store, t: de.taschenwerk.app.Tab, visible: Boolean) {
         if (t == de.taschenwerk.app.Tab.START) return
         hidden = if (visible) hidden - t.name else hidden + t.name
         store.putString("navHidden", hidden.joinToString(","))
+    }
+
+    fun setMode(store: Store, m: String) {
+        mode = m
+        store.putString("navMode", m)
+    }
+
+    fun setMini(store: Store, list: List<String>) {
+        mini = list
+        store.putString("navMini", list.joinToString(","))
+    }
+}
+
+/** Taschenlampe über die Kamera-LED (braucht keine Berechtigung). */
+object Torch {
+    var on by mutableStateOf(false)
+
+    fun toggle(ctx: Context) {
+        val cm = ctx.getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
+        val id = runCatching {
+            cm.cameraIdList.firstOrNull {
+                cm.getCameraCharacteristics(it).get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+            }
+        }.getOrNull()
+        if (id == null) {
+            android.widget.Toast.makeText(ctx, "Keine Taschenlampe gefunden", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching { cm.setTorchMode(id, !on); on = !on }
+            .onFailure { android.widget.Toast.makeText(ctx, "Taschenlampe ist gerade belegt", android.widget.Toast.LENGTH_SHORT).show() }
     }
 }
 
@@ -179,7 +221,13 @@ fun quickDef(id: String): QuickDef = when {
     id == "conv" -> QuickDef(id, "Umrechner", Ic.swapH)
     id == "currency" -> QuickDef(id, "Währung", Ic.money)
     id == "breath" -> QuickDef(id, "Breath", Ic.breath)
-    id == "altitude" -> QuickDef(id, "Höhe", Ic.mountain)
+    id == "altitude" -> QuickDef(id, "Nullpunkt", Ic.mountain)
+    id == "weather" -> QuickDef(id, "Wetter", Ic.cloud)
+    id == "torch" -> QuickDef(id, "Lampe", Ic.torch)
+    id == "alarmNew" -> QuickDef(id, "Wecker +", Ic.alarmPlus)
+    id == "world" -> QuickDef(id, "Weltzeit", Ic.globe)
+    id == "compass" -> QuickDef(id, "Kompass", Ic.compass)
+    id == "level" -> QuickDef(id, "Wasserwaage", Ic.level)
     id.startsWith("conv:") -> {
         val c = CATEGORIES.getOrNull(id.removePrefix("conv:").toIntOrNull() ?: -1)
         QuickDef(id, c?.name ?: "Umrechner", c?.icon ?: Ic.swapH)
@@ -187,7 +235,25 @@ fun quickDef(id: String): QuickDef = when {
     else -> QuickDef(id, "–", Ic.plus)
 }
 
-val QUICK_BASE = listOf("timer", "workout", "stopwatch", "calc", "percent", "conv", "currency", "breath", "altitude")
+val QUICK_BASE = listOf(
+    "timer", "workout", "stopwatch", "breath", "altitude", "conv", "percent", "calc", "currency", "weather",
+    "torch", "alarmNew", "world", "compass", "level"
+)
+
+/** Name in der Auswahlliste. */
+fun pickerName(id: String): String = when (id) {
+    "workout" -> "Intervall / Workout"
+    "altitude" -> "Höhe · Nullpunkt"
+    "torch" -> "Taschenlampe"
+    "alarmNew" -> "Neuer Wecker"
+    else -> quickDef(id).label
+}
+
+/** Kurzer Name auf den Mini-Knöpfen unten. */
+fun dockLabel(id: String): String = when (id) {
+    "workout" -> "Workout"
+    else -> quickDef(id).label
+}
 
 /** Schnellzugriff ausführen. */
 fun runQuick(id: String, nav: Nav, ctx: Context, store: Store) {
@@ -218,6 +284,12 @@ fun runQuick(id: String, nav: Nav, ctx: Context, store: Store) {
         id == "currency" -> openConv(0)
         id == "breath" -> nav.go(Tab.BREATH)
         id == "altitude" -> nav.go(Tab.HOEHE)
+        id == "weather" -> nav.go(Tab.WETTER)
+        id == "torch" -> Torch.toggle(ctx)
+        id == "alarmNew" -> nav.overlay = Overlay.EditAlarm(null)
+        id == "world" -> nav.go(Tab.UHR, 3)
+        id == "compass" -> nav.overlay = Overlay.Compass
+        id == "level" -> nav.overlay = Overlay.Level
         id.startsWith("conv:") -> openConv(id.removePrefix("conv:").toIntOrNull() ?: 1)
     }
 }
@@ -323,6 +395,7 @@ fun HomeSettingsPage(onBack: () -> Unit) {
     remember { HomeCfg.load(store); NavCfg.load(store); 0 }
     BackHandler { onBack() }
     var slot by remember { mutableIntStateOf(-1) }
+    var addMini by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
         SubHeader("Startseite", onBack)
@@ -336,9 +409,13 @@ fun HomeSettingsPage(onBack: () -> Unit) {
             SettingLabel("Kacheln · halten und ziehen zum Sortieren")
             Card(padding = PaddingValues(horizontal = 14.dp, vertical = 2.dp)) { TileList(store) }
 
-            SettingLabel("Schnellzugriffe")
+            SettingLabel("Uhr-Kachel")
             Card(padding = PaddingValues(12.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                RowItem("Timer, Intervall, Stoppuhr zeigen", trailing = {
+                    Toggle(HomeCfg.quickOn) { HomeCfg.quickOn = it; HomeCfg.save(store) }
+                })
+                Text("in der Uhr-Kachel unter dem Wecker", color = p.sub, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                if (HomeCfg.quickOn) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     HomeCfg.quick.forEachIndexed { i, id ->
                         val d = quickDef(id)
                         Column(
@@ -356,7 +433,7 @@ fun HomeSettingsPage(onBack: () -> Unit) {
                         }
                     }
                 }
-                Text("Antippen zum Ändern", color = p.sub, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                if (HomeCfg.quickOn) Text("Antippen zum Ändern", color = p.sub, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
             }
 
             SettingLabel("Zweite Stadt")
@@ -375,22 +452,51 @@ fun HomeSettingsPage(onBack: () -> Unit) {
             )
 
             SettingLabel("Untere Leiste")
-            Card(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
-                de.taschenwerk.app.Tab.entries.forEachIndexed { i, t ->
-                    if (i > 0) Divider()
-                    RowItem(t.label, trailing = {
-                        if (t == de.taschenwerk.app.Tab.START) Text("immer", color = p.muted, fontSize = 13.sp)
-                        else Toggle(t.name !in NavCfg.hidden) { on -> NavCfg.set(store, t, on) }
-                    })
+            Card(padding = PaddingValues(12.dp)) {
+                val modes = listOf(NavCfg.TABS, NavCfg.MINI, NavCfg.OFF)
+                Segmented(listOf("Bereiche", "Mini-Knöpfe", "Aus"), modes.indexOf(NavCfg.mode).coerceAtLeast(0), { NavCfg.setMode(store, modes[it]) })
+                Spacer(Modifier.height(6.dp))
+                when (NavCfg.mode) {
+                    NavCfg.TABS -> de.taschenwerk.app.Tab.entries.forEachIndexed { i, t ->
+                        if (i > 0) Divider()
+                        RowItem(t.label, trailing = {
+                            if (t == de.taschenwerk.app.Tab.START) Text("immer", color = p.muted, fontSize = 13.sp)
+                            else Toggle(t.name !in NavCfg.hidden) { on -> NavCfg.set(store, t, on) }
+                        })
+                    }
+                    NavCfg.MINI -> {
+                        MiniList(store)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { addMini = true },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TwIcon(Ic.plus, tint = p.accent, size = 18.dp)
+                            Text("Knopf hinzufügen", color = p.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 10.dp))
+                        }
+                    }
+                    else -> Text(
+                        "Unten steht nichts. Alle Bereiche öffnest du über ihre Kachel (kleiner Pfeil ↗), zurück mit ← oder der Zurück-Geste.",
+                        color = p.sub, fontSize = 13.sp, modifier = Modifier.padding(4.dp)
+                    )
                 }
             }
             Text(
-                "Ausgeblendete Bereiche erreichst du weiter über ihre Kachel auf der Startseite.",
+                when (NavCfg.mode) {
+                    NavCfg.TABS -> "Ausgeblendete Bereiche erreichst du weiter über ihre Kachel auf der Startseite."
+                    NavCfg.MINI -> "Halten und ziehen zum Sortieren. Mehr als vier Knöpfe: unten seitlich wischen."
+                    else -> ""
+                },
                 color = p.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp)
             )
             Spacer(Modifier.height(24.dp))
         }
     }
+
+    if (addMini) AddMiniDialog(store) { addMini = false }
 
     if (slot >= 0) {
         AlertDialog(
@@ -416,7 +522,7 @@ fun HomeSettingsPage(onBack: () -> Unit) {
                         ) {
                             QuickBadge(d, 30.dp)
                             Text(
-                                if (id == "timerX") "Timer · ${d.label}" else d.label, color = p.ink, fontSize = 15.sp,
+                                pickerName(id), color = p.ink, fontSize = 15.sp,
                                 modifier = Modifier
                                     .padding(start = 12.dp)
                                     .weight(1f)
@@ -448,6 +554,99 @@ fun HomeSettingsPage(onBack: () -> Unit) {
             },
             confirmButton = { TextButton({ slot = -1 }) { Text("Schließen", color = p.sub) } }
         )
+    }
+}
+
+/** Auswahl eines Knopfs für die untere Leiste. */
+@Composable
+private fun AddMiniDialog(store: Store, onClose: () -> Unit) {
+    val p = LocalPal.current
+    AlertDialog(
+        onDismissRequest = onClose,
+        containerColor = p.card,
+        title = { Text("Knopf hinzufügen", color = p.ink) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                QUICK_BASE.forEach { id ->
+                    val d = quickDef(id)
+                    val have = id in NavCfg.mini
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(46.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                NavCfg.setMini(store, if (have) NavCfg.mini - id else NavCfg.mini + id)
+                            },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        QuickBadge(d, 30.dp)
+                        Text(pickerName(id), color = p.ink, fontSize = 15.sp, modifier = Modifier.padding(start = 12.dp).weight(1f))
+                        if (have) TwIcon(Ic.check, tint = p.ink, size = 18.dp)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClose) { Text("Fertig", color = p.sub) } }
+    )
+}
+
+/** Mini-Knöpfe der unteren Leiste: halten und ziehen zum Sortieren, Mülleimer zum Entfernen. */
+@Composable
+private fun MiniList(store: Store) {
+    val p = LocalPal.current
+    val rowH = 44.dp
+    val rowPx = with(LocalDensity.current) { rowH.toPx() }
+    var dragId by remember { mutableStateOf<String?>(null) }
+    var dragOff by remember { mutableFloatStateOf(0f) }
+    Column {
+        NavCfg.mini.forEach { id ->
+            val dragging = dragId == id
+            val d = quickDef(id)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(rowH)
+                    .zIndex(if (dragging) 1f else 0f)
+                    .graphicsLayer {
+                        translationY = if (dragging) dragOff else 0f
+                        shadowElevation = if (dragging) 8f else 0f
+                    }
+                    .background(if (dragging) p.card else androidx.compose.ui.graphics.Color.Transparent)
+                    .pointerInput(id) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { dragId = id; dragOff = 0f },
+                            onDrag = { change, dd ->
+                                change.consume()
+                                dragOff += dd.y
+                                val list = NavCfg.mini
+                                val from = list.indexOf(id)
+                                val to = (from + (dragOff / rowPx).roundToInt()).coerceIn(0, list.lastIndex)
+                                if (to != from && from >= 0) {
+                                    NavCfg.mini = list.toMutableList().apply { add(to, removeAt(from)) }
+                                    dragOff -= (to - from) * rowPx
+                                }
+                            },
+                            onDragEnd = { dragId = null; dragOff = 0f; NavCfg.setMini(store, NavCfg.mini) },
+                            onDragCancel = { dragId = null; dragOff = 0f; NavCfg.setMini(store, NavCfg.mini) }
+                        )
+                    },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TwIcon(Ic.grip, tint = p.muted, size = 18.dp)
+                Spacer(Modifier.width(10.dp))
+                if (d.icon != null) TwIcon(d.icon, tint = p.sub, size = 18.dp)
+                Text(dockLabel(id), color = p.ink, fontSize = 15.sp, modifier = Modifier.padding(start = 12.dp).weight(1f))
+                Box(
+                    Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .clickable { NavCfg.setMini(store, NavCfg.mini - id) },
+                    contentAlignment = Alignment.Center
+                ) { TwIcon(Ic.trash, tint = p.muted, size = 18.dp, desc = "Entfernen") }
+            }
+        }
+        if (NavCfg.mini.isEmpty()) Text("Noch keine Knöpfe", color = p.sub, fontSize = 13.sp, modifier = Modifier.padding(8.dp))
     }
 }
 

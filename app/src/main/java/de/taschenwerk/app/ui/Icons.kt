@@ -196,6 +196,11 @@ object Ic {
     val binary by lazy { stroke("binary", "M7 5v6M5 5h2M5 11h4", c(16f, 8f, 2.5f), c(8f, 16f, 2.5f), "M17 13v6M15 13h2M15 19h4") }
     val trash by lazy { stroke("trash", "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3") }
     val edit by lazy { stroke("edit", "M4 20h4L19 9l-4-4L4 16z", "M13.5 6.5l4 4") }
+    val openArrow by lazy { stroke("openArrow", "M8.5 15.5L15.5 8.5M10 8.5h5.5V14", w = 2f) }
+    val torch by lazy { stroke("torch", "M8 3h8v4l-2 3v10a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V10L8 7z", "M12 13v2.5") }
+    val compass by lazy { stroke("compass", c(12f, 12f, 8.5f), "M14.8 9.2l-1.6 4-4 1.6 1.6-4z") }
+    val level by lazy { stroke("level", "M3 9h18v6H3z", c(12f, 12f, 1.6f), "M9 9v6M15 9v6") }
+    val alarmPlus by lazy { stroke("alarmPlus", c(12f, 13f, 7.5f), "M12 10v6M9 13h6M4.5 4.5L2.8 6.2M19.5 4.5l1.7 1.7") }
     val globe by lazy { stroke("globe", c(12f, 12f, 9f), "M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18") }
     val bell by lazy { stroke("bell", "M6 16V11a6 6 0 0 1 12 0v5l2 2H4z", "M10 20a2 2 0 0 0 4 0") }
     val battery by lazy { stroke("battery", "M5 7h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z", "M21 10.5v3") }

@@ -100,7 +100,7 @@ fun StartScreen(nav: Nav) {
     val p = LocalPal.current
     val scope = rememberCoroutineScope()
 
-    remember { HomeCfg.load(store); 0 }
+    remember { HomeCfg.load(store); NavCfg.load(store); WeatherRepo.loadCached(store); 0 }
     val askLocation = rememberLocationAsk {
         scope.launch { WeatherRepo.refreshAll(ctx, store, force = true) }
     }
@@ -140,17 +140,27 @@ fun StartScreen(nav: Nav) {
                 }
             }
             // Kacheln in der eingestellten Reihenfolge (Einstellungen → Startseite)
-            HomeCfg.tiles.filter { it.second }.forEach { (tileId, _) ->
+            val shown = HomeCfg.tiles.filter { it.second }.map { it.first }
+            // Datum und direkt folgendes Wetter bilden eine gemeinsame Kopf-Kachel
+            val joined = shown.indexOf("date").let { i -> i >= 0 && shown.getOrNull(i + 1) == "weather" }
+            shown.forEach { tileId ->
                 key(tileId) {
                     when (tileId) {
-                        "date" -> DateTile(nav, store)
-                        "weather" -> WeatherTile(nav, store, askLocation)
-                        "quick" -> QuickRow(nav, store)
-                        "alarm" -> AlarmTile(nav, store)
-                        "currency" -> CurrencyCard(store)
+                        "date" -> HeadTile(nav, store, withWeather = joined, askLocation = askLocation)
+                        "weather" -> if (!joined) WeatherTile(nav, store, askLocation)
+                        "alarm" -> ClockTile(nav, store)
+                        "currency" -> Box {
+                            CurrencyCard(store, endPad = if (showOpenArrows) 28.dp else 16.dp)
+                            if (showOpenArrows) Box(
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(28.dp)
+                                    .clickable { runQuick("currency", nav, ctx, store) }
+                            ) { OpenArrow() }
+                        }
                         "altitude" -> AltitudeTile(nav, CARD_MIN)
                         "breath" -> BreathMini()
-                        "calc" -> CalcTile()
+                        "calc" -> CalcTile(onOpen = if (showOpenArrows) ({ nav.go(Tab.RECHNER, 0) }) else null)
                         "notes" -> NotesTile()
                     }
                 }
@@ -215,7 +225,7 @@ fun alarmSubtitle(a: de.taschenwerk.app.data.Alarm): String {
 /** Währungsrechner mit zwei Zeilen (auch auf der Startseite). */
 @Composable
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-fun CurrencyCard(store: Store) {
+fun CurrencyCard(store: Store, endPad: androidx.compose.ui.unit.Dp = 16.dp) {
     val p = LocalPal.current
     // Beim Antippen eines Betrags die ganze Karte über die Tastatur schieben,
     // damit das Ergebnis darunter sofort sichtbar ist.
@@ -256,7 +266,7 @@ fun CurrencyCard(store: Store) {
             .heightIn(min = CARD_MIN)
             .bringIntoViewRequester(bring)
             .onFocusChanged { focused = it.hasFocus },
-        padding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+        padding = PaddingValues(start = 16.dp, end = endPad, top = 6.dp, bottom = 6.dp)
     ) {
         CurrencyRow(from, shownA, { store.applyMainCur(it) }) {
             aText = it; editedTop = true

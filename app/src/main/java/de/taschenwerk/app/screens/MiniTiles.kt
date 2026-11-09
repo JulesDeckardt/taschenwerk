@@ -137,7 +137,7 @@ private fun cleanCalc(s: String): String {
  */
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-fun CalcTile() {
+fun CalcTile(onOpen: (() -> Unit)? = null) {
     val ctx = LocalContext.current
     val store = remember { Store.get(ctx) }
     val p = LocalPal.current
@@ -244,12 +244,20 @@ fun CalcTile() {
         padding = PaddingValues(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Rechner", color = p.sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 2.dp)
-            )
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                var tm = Modifier.padding(start = 2.dp)
+                if (onOpen != null) tm = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onOpen() }
+                    .padding(start = 2.dp, end = 4.dp, top = 2.dp, bottom = 2.dp)
+                Row(tm, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Rechner", color = p.sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    if (onOpen != null) {
+                        Spacer(Modifier.width(4.dp))
+                        TwIcon(Ic.openArrow, tint = p.muted, size = 14.dp)
+                    }
+                }
+            }
             if (current != null) {
                 SmallChip("→ ${store.mainCur}") { CalcBridge.push = fmt(current, 2) }
                 Spacer(Modifier.width(8.dp))

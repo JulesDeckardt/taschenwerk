@@ -15,6 +15,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.coroutines.resume
 
@@ -61,13 +63,22 @@ object Loc {
         }
     }
 
-    /** Aktueller Standort: frisch genug aus dem Cache, sonst neue Messung (Netz, dann GPS). */
+    /**
+     * Aktueller Standort: frisch genug aus dem Cache, sonst neue Messung.
+     * Alle verfügbaren Quellen (Fused, Netz, GPS) fragen gleichzeitig – die erste Antwort zählt.
+     */
     suspend fun current(ctx: Context): Location? {
         if (!hasPermission(ctx)) return null
         val last = lastKnown(ctx)
         if (last != null && System.currentTimeMillis() - last.time < 20 * 60_000L) return last
-        val fresh = single(ctx, LocationManager.NETWORK_PROVIDER, 8_000L)
-            ?: single(ctx, LocationManager.GPS_PROVIDER, 15_000L)
+        val providers = listOf("fused", LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+        val fresh = withTimeoutOrNull(12_000L) {
+            kotlinx.coroutines.flow.channelFlow {
+                providers.forEach { p ->
+                    launch { single(ctx, p, 12_000L)?.let { send(it) } }
+                }
+            }.firstOrNull()
+        }
         return fresh ?: last
     }
 

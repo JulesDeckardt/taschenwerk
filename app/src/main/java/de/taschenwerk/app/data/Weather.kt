@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import java.net.URLEncoder
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -387,31 +388,63 @@ object WeatherRepo {
         scope.launch { runCatching { others[p.name] = fetch(p.lat, p.lon, p.name) } }
     }
 
+    private var cachedLoaded = false
+
+    /** Zuletzt bekannten Ort sofort übernehmen, damit beim Start nicht erst der Standard-Ort dasteht. */
+    fun loadCached(store: Store) {
+        if (cachedLoaded) return
+        cachedLoaded = true
+        homeLat = store.getDouble("homeLat", homeLat)
+        homeLon = store.getDouble("homeLon", homeLon)
+        homeName = store.getString("homeName") ?: homeName
+    }
+
+    private fun distM(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6_371_000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2).let { it * it } +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.sin(dLon / 2).let { it * it }
+        return 2 * r * Math.asin(Math.sqrt(a))
+    }
+
     private suspend fun doRefresh(ctx: Context, store: Store) {
         loading = true
         error = null
+        loadCached(store)
         try {
-            val loc = Loc.current(ctx)
-            if (loc != null) {
-                homeLat = loc.latitude
-                homeLon = loc.longitude
-                homeName = Loc.cityName(ctx, loc.latitude, loc.longitude) ?: "Mein Standort"
-                store.putDouble("homeLat", homeLat)
-                store.putDouble("homeLon", homeLon)
-                store.putString("homeName", homeName)
-            } else {
-                homeLat = store.getDouble("homeLat", homeLat)
-                homeLon = store.getDouble("homeLon", homeLon)
-                homeName = store.getString("homeName") ?: homeName
+            kotlinx.coroutines.coroutineScope {
+                // Ortung läuft parallel; das Wetter für den letzten Ort kommt sofort
+                val locJob = async { Loc.current(ctx) }
+                val quick = async { runCatching { fetch(homeLat, homeLon, homeName) }.getOrNull() }
+                quick.await()?.let { home = it }
+                val loc = locJob.await()
+                if (loc != null) {
+                    val moved = distM(homeLat, homeLon, loc.latitude, loc.longitude) > 1500.0
+                    homeLat = loc.latitude
+                    homeLon = loc.longitude
+                    store.putDouble("homeLat", homeLat)
+                    store.putDouble("homeLon", homeLon)
+                    // Ortsname und Wetter gleichzeitig laden
+                    val nameJob = async { Loc.cityName(ctx, loc.latitude, loc.longitude) }
+                    val wxJob = if (moved || home == null) async { fetch(homeLat, homeLon, homeName) } else null
+                    val name = nameJob.await()
+                    if (name != null) {
+                        homeName = name
+                        store.putString("homeName", name)
+                    } else if (moved) homeName = "Mein Standort"
+                    val wx = wxJob?.await() ?: home
+                    home = wx?.copy(name = homeName)
+                }
+                if (home == null) home = fetch(homeLat, homeLon, homeName)
             }
-            home = fetch(homeLat, homeLon, homeName)
             for (p in store.places.toList()) {
                 runCatching { others[p.name] = fetch(p.lat, p.lon, p.name) }
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            error = "Wetter konnte nicht geladen werden"
+            if (home == null) error = "Wetter konnte nicht geladen werden"
         } finally {
             loading = false
         }
