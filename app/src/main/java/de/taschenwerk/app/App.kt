@@ -224,7 +224,9 @@ fun NavBar(cur: Tab, onSelect: (Tab) -> Unit) {
                 .height(64.dp)
                 .padding(horizontal = 4.dp)
         ) {
-            Tab.entries.forEach { t ->
+            val navCtx = androidx.compose.ui.platform.LocalContext.current
+            remember { de.taschenwerk.app.screens.NavCfg.load(de.taschenwerk.app.data.Store.get(navCtx)); 0 }
+            Tab.entries.filter { it == Tab.START || it.name !in de.taschenwerk.app.screens.NavCfg.hidden }.forEach { t ->
                 val sel = t == cur
                 Column(
                     Modifier

@@ -62,6 +62,8 @@ object TimerStore {
         endAt = System.currentTimeMillis() + ms
         AlarmScheduler.scheduleTimer(ctx, endAt)
         persist(ctx)
+        // Zuletzt benutzte Dauer – der Timer öffnet beim nächsten Mal damit
+        Store.get(ctx).putLong("timerLastMs", ms)
         notifyRunning(ctx)
     }
 

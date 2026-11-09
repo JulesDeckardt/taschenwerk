@@ -81,11 +81,12 @@ import kotlin.math.roundToInt
 
 /** Welche Kacheln die Startseite zeigt (in dieser Reihenfolge) und wie die Schnellzugriffe belegt sind. */
 object HomeCfg {
-    val ALL_TILES = listOf("weather", "alarm", "currency", "altitude", "breath", "calc", "notes")
-    private val DEFAULT_ON = setOf("weather", "alarm", "currency", "notes")
+    val ALL_TILES = listOf("date", "weather", "quick", "alarm", "currency", "calc", "notes", "altitude", "breath")
+    private val DEFAULT_ON = setOf("date", "weather", "quick", "alarm", "currency", "calc", "notes")
+    val DEFAULT_QUICK = listOf("timer", "workout", "stopwatch")
 
     var tiles by mutableStateOf(ALL_TILES.map { it to (it in DEFAULT_ON) })
-    var quick by mutableStateOf(listOf("timerX", "workout", "timer", "stopwatch"))
+    var quick by mutableStateOf(DEFAULT_QUICK)
     var timerMin by mutableIntStateOf(60)
     private var loaded = false
 
@@ -97,27 +98,35 @@ object HomeCfg {
                 val parts = e.split(":")
                 if (parts.size == 2 && parts[0] in ALL_TILES) parts[0] to (parts[1] == "1") else null
             }
+            val fresh = setOf("notes", "date", "quick")
             // Neue Kachel-Arten, die es beim Speichern noch nicht gab, hinten anhängen (aus)
-            var t = parsed + ALL_TILES.filter { id -> id != "notes" && parsed.none { it.first == id } }.map { it to false }
-            // Die Notiz (neu in 8.0) kommt eingeschaltet direkt unter den Rechner
-            if (t.none { it.first == "notes" }) {
-                val at = t.indexOfFirst { it.first == "calc" }.let { if (it < 0) t.size else it + 1 }
-                t = t.toMutableList().apply { add(at, "notes" to true) }
+            var t = parsed + ALL_TILES.filter { id -> id !in fresh && parsed.none { it.first == id } }.map { it to false }
+            fun insertAfter(id: String, after: String?) {
+                if (t.any { it.first == id }) return
+                val at = if (after == null) 0 else t.indexOfFirst { it.first == after }.let { if (it < 0) t.size else it + 1 }
+                t = t.toMutableList().apply { add(at, id to true) }
             }
+            // Notiz (8.0) unter den Rechner, Datum (9.0) ganz nach oben, Schnellzugriffe (9.0) unter das Wetter
+            insertAfter("notes", "calc")
+            insertAfter("date", null)
+            insertAfter("quick", "weather")
             tiles = t
         }
-        store.getString("homeQuick")?.split(",")?.takeIf { it.size == 4 }?.let { quick = it }
+        // Ab 9.0 drei Schnellzugriffe; ältere Belegungen mit vier Plätzen werden ersetzt
+        store.getString("homeQuick3")?.split(",")?.takeIf { it.size == 3 }?.let { quick = it.map { q -> if (q == "timerX") "timer" else q } }
         timerMin = store.getLong("homeTimerMin", 60L).toInt()
     }
 
     fun save(store: Store) {
         store.putString("homeTiles", tiles.joinToString(",") { "${it.first}:${if (it.second) 1 else 0}" })
-        store.putString("homeQuick", quick.joinToString(","))
+        store.putString("homeQuick3", quick.joinToString(","))
         store.putLong("homeTimerMin", timerMin.toLong())
     }
 
     fun tileName(id: String) = when (id) {
-        "weather" -> "Wetter"
+        "date" -> "Datum & Uhrzeiten"
+        "quick" -> "Schnellzugriffe"
+        "weather" -> "Wetter & Höhe"
         "alarm" -> "Wecker"
         "currency" -> "Währung"
         "altitude" -> "Höhe"
@@ -127,6 +136,8 @@ object HomeCfg {
     }
 
     fun tileIcon(id: String): ImageVector = when (id) {
+        "date" -> Ic.clock
+        "quick" -> Ic.stopwatch
         "weather" -> Ic.cloud
         "alarm" -> Ic.alarm
         "currency" -> Ic.money
@@ -137,6 +148,24 @@ object HomeCfg {
     }
 }
 
+/** Welche Tabs der unteren Leiste ausgeblendet sind (Start bleibt immer). */
+object NavCfg {
+    var hidden by mutableStateOf<Set<String>>(emptySet())
+    private var loaded = false
+
+    fun load(store: Store) {
+        if (loaded) return
+        loaded = true
+        hidden = store.getString("navHidden")?.split(",")?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+    }
+
+    fun set(store: Store, t: de.taschenwerk.app.Tab, visible: Boolean) {
+        if (t == de.taschenwerk.app.Tab.START) return
+        hidden = if (visible) hidden - t.name else hidden + t.name
+        store.putString("navHidden", hidden.joinToString(","))
+    }
+}
+
 /** Ein möglicher Schnellzugriff. */
 class QuickDef(val id: String, val label: String, val icon: ImageVector?, val badge: String? = null)
 
@@ -144,7 +173,7 @@ fun quickDef(id: String): QuickDef = when {
     id == "timerX" -> QuickDef(id, "${HomeCfg.timerMin} Min.", null, "${HomeCfg.timerMin}")
     id == "timer" -> QuickDef(id, "Timer", Ic.hourglass)
     id == "stopwatch" -> QuickDef(id, "Stoppuhr", Ic.stopwatch)
-    id == "workout" -> QuickDef(id, "Workout", Ic.pulse)
+    id == "workout" -> QuickDef(id, "Intervall", Ic.pulse)
     id == "calc" -> QuickDef(id, "Rechner", Ic.calc)
     id == "percent" -> QuickDef(id, "Prozent", Ic.percent)
     id == "conv" -> QuickDef(id, "Umrechner", Ic.swapH)
@@ -158,7 +187,7 @@ fun quickDef(id: String): QuickDef = when {
     else -> QuickDef(id, "–", Ic.plus)
 }
 
-val QUICK_BASE = listOf("timerX", "timer", "stopwatch", "workout", "calc", "percent", "conv", "currency", "breath", "altitude")
+val QUICK_BASE = listOf("timer", "workout", "stopwatch", "calc", "percent", "conv", "currency", "breath", "altitude")
 
 /** Schnellzugriff ausführen. */
 fun runQuick(id: String, nav: Nav, ctx: Context, store: Store) {
@@ -291,7 +320,7 @@ fun HomeSettingsPage(onBack: () -> Unit) {
     val ctx = LocalContext.current
     val store = remember { Store.get(ctx) }
     val p = LocalPal.current
-    remember { HomeCfg.load(store); 0 }
+    remember { HomeCfg.load(store); NavCfg.load(store); 0 }
     BackHandler { onBack() }
     var slot by remember { mutableIntStateOf(-1) }
 
@@ -330,36 +359,33 @@ fun HomeSettingsPage(onBack: () -> Unit) {
                 Text("Antippen zum Ändern", color = p.sub, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
             }
 
-            SettingLabel("Weitere")
+            SettingLabel("Zweite Stadt")
             Card(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
-                val steps = listOf(5, 10, 15, 20, 25, 30, 45, 60, 90, 120)
-                RowItem("Timer-Knopf", trailing = {
-                    CircleButton(Ic.minus, {
-                        HomeCfg.timerMin = steps.lastOrNull { it < HomeCfg.timerMin } ?: steps.first(); HomeCfg.save(store)
-                    }, size = 30.dp, bg = p.track, iconSize = 15.dp, desc = "kürzer")
-                    Text(
-                        "${HomeCfg.timerMin} Min.", color = p.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center, modifier = Modifier.width(66.dp)
-                    )
-                    CircleButton(Ic.plus, {
-                        HomeCfg.timerMin = steps.firstOrNull { it > HomeCfg.timerMin } ?: steps.last(); HomeCfg.save(store)
-                    }, size = 30.dp, bg = p.track, iconSize = 15.dp, desc = "länger")
-                })
-                Divider()
-                var on by remember { mutableStateOf(store.getBool("clock2", false)) }
-                var zone by remember { mutableStateOf(store.getString("clock2Zone") ?: "Europe/Berlin") }
-                RowItem("Zweite Uhr", trailing = { Toggle(on) { on = it; store.putBool("clock2", it) } })
-                if (on) {
-                    (listOf("Europe/Berlin") + store.zones).distinct().forEach { z ->
-                        Divider()
-                        RowItem(cityForZone(z), onClick = { zone = z; store.putString("clock2Zone", z) }, trailing = {
-                            if (z == zone) TwIcon(Ic.check, tint = p.ink, size = 18.dp)
-                        })
-                    }
+                var zone by remember { mutableStateOf(secondZone(store)) }
+                (listOf("Europe/Berlin") + store.zones).distinct().forEachIndexed { i, z ->
+                    if (i > 0) Divider()
+                    RowItem(cityForZone(z), onClick = { zone = z; store.putString("clock2Zone", z) }, trailing = {
+                        if (z == zone) TwIcon(Ic.check, tint = p.ink, size = 18.dp)
+                    })
                 }
             }
             Text(
-                "Die zweite Uhr steht klein unter der großen Uhr. Weitere Städte fügst du unter Uhr → Weltzeit hinzu.",
+                "Steht oben in der Datums-Kachel und bei jedem Wecker. Weitere Städte fügst du unter Uhr → Weltzeit hinzu.",
+                color = p.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp)
+            )
+
+            SettingLabel("Untere Leiste")
+            Card(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
+                de.taschenwerk.app.Tab.entries.forEachIndexed { i, t ->
+                    if (i > 0) Divider()
+                    RowItem(t.label, trailing = {
+                        if (t == de.taschenwerk.app.Tab.START) Text("immer", color = p.muted, fontSize = 13.sp)
+                        else Toggle(t.name !in NavCfg.hidden) { on -> NavCfg.set(store, t, on) }
+                    })
+                }
+            }
+            Text(
+                "Ausgeblendete Bereiche erreichst du weiter über ihre Kachel auf der Startseite.",
                 color = p.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp)
             )
             Spacer(Modifier.height(24.dp))

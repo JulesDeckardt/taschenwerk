@@ -189,7 +189,17 @@ fun AlarmsPage(nav: Nav) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("${two(a.hour)}:${two(a.minute)}", style = num(40.sp), color = if (a.enabled) p.ink else p.muted)
-                            Text(alarmSubtitle(a), color = p.sub, fontSize = 14.sp, maxLines = 1)
+                            Text(
+                                buildAnnotatedString {
+                                    append(daysText(a.days) + (if (a.label.isNotBlank()) " · ${a.label}" else "") + " · ")
+                                    val sec = alarmSecondText(store, a)
+                                    append(sec.substringBeforeLast(' ') + " ")
+                                    withStyle(SpanStyle(color = if (a.enabled) p.ink else p.muted, fontWeight = FontWeight.SemiBold)) {
+                                        append(sec.substringAfterLast(' '))
+                                    }
+                                },
+                                color = p.sub, fontSize = 14.sp, maxLines = 1
+                            )
                         }
                         Toggle(a.enabled) { on ->
                             val na = a.copy(enabled = on)
@@ -314,8 +324,24 @@ fun AlarmEditScreen(nav: Nav, id: Int?) {
                     color = p.sub, fontSize = 14.sp, textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 14.dp)
+                        .padding(top = 4.dp, bottom = 8.dp)
                 )
+                // Dieselbe Weckzeit in der zweiten Stadt (für den Klingeltag gerechnet, also mit Sommerzeit)
+                val there = secondTime(store, next)
+                Box(Modifier.fillMaxWidth().padding(bottom = 14.dp), contentAlignment = Alignment.Center) {
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(p.track)
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TwIcon(Ic.globe, size = 15.dp, tint = p.sub)
+                        Text(shortCity(secondZone(store)) + " ", color = p.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 6.dp))
+                        Text("${two(there.hour)}:${two(there.minute)}", color = p.ink, style = num(13.sp, FontWeight.Bold))
+                        Text(" · " + there.format(DateTimeFormatter.ofPattern("EE", Locale.GERMAN)), color = p.sub, fontSize = 13.sp)
+                    }
+                }
             }
 
             Card(padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
@@ -820,9 +846,11 @@ fun TimerPage(nav: Nav) {
         RunningTimer()
         return
     }
-    var h by remember { mutableIntStateOf(0) }
-    var m by remember { mutableIntStateOf(5) }
-    var s by remember { mutableIntStateOf(0) }
+    // Zuletzt benutzte Dauer voreinstellen (Standard 5 Min.)
+    val lastSec = (store.getLong("timerLastMs", 300_000L) / 1000L).coerceIn(1L, 99L * 3600L + 3599L)
+    var h by remember { mutableIntStateOf((lastSec / 3600).toInt().coerceAtMost(23)) }
+    var m by remember { mutableIntStateOf(((lastSec % 3600) / 60).toInt()) }
+    var s by remember { mutableIntStateOf((lastSec % 60).toInt()) }
     var addPreset by remember { mutableStateOf(false) }
     var removePreset by remember { mutableStateOf<TimerPreset?>(null) }
 

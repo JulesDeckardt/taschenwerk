@@ -93,11 +93,11 @@ fun rememberLocationAsk(onResult: () -> Unit): () -> Unit {
 }
 
 @Composable
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 fun StartScreen(nav: Nav) {
     val ctx = LocalContext.current
     val store = remember { Store.get(ctx) }
     val p = LocalPal.current
-    val now by rememberNow(1000)
     val scope = rememberCoroutineScope()
 
     remember { HomeCfg.load(store); 0 }
@@ -113,178 +113,50 @@ fun StartScreen(nav: Nav) {
         }
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+    // Nach unten ziehen lädt das Wetter neu
+    var refreshing by remember { mutableStateOf(false) }
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = {
+            scope.launch {
+                refreshing = true
+                runCatching { WeatherRepo.refreshAll(ctx, store, force = true) }
+                refreshing = false
+            }
+        },
+        modifier = Modifier.fillMaxSize()
     ) {
-        // Kopf: Datum + Uhrzeit – links und rechts bündig mit den Kacheln
-        Row(verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    now.format(DateTimeFormatter.ofPattern("EE, d. MMMM", Locale.GERMAN)),
-                    color = p.sub, fontSize = 14.sp
-                )
-                Text(
-                    buildAnnotatedString {
-                        append("${two(now.hour)}:")
-                        withStyle(SpanStyle(color = p.accent)) { append(two(now.minute)) }
-                    },
-                    style = num(84.sp).copy(lineHeight = 90.sp), color = p.ink,
-                    // große Ziffern bringen links etwas Luft mit – optisch ausgleichen
-                    modifier = Modifier.offset(x = (-4).dp)
-                )
-                // Zweite Uhr (Einstellung): klein und grau unter der großen Uhr
-                if (store.getBool("clock2", false)) {
-                    val z = store.getString("clock2Zone") ?: "Europe/Berlin"
-                    val t = runCatching { java.time.ZonedDateTime.now(java.time.ZoneId.of(z)) }.getOrNull()
-                    if (t != null) Text(
-                        "${two(t.hour)}:${two(t.minute)}  ${cityForZone(z)}",
-                        color = p.sub, fontSize = 15.sp, style = num(15.sp, FontWeight.Normal)
-                    )
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Ohne Datums-Kachel bleiben die Einstellungen trotzdem erreichbar
+            if (HomeCfg.tiles.none { it.first == "date" && it.second }) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    CircleButton(Ic.more, { nav.overlay = Overlay.Settings }, size = 40.dp, bg = p.bg, iconSize = 20.dp, desc = "Einstellungen")
                 }
             }
-            // ⋮ so verschoben, dass die Punkte mit dem rechten Kachelrand abschließen
-            CircleButton(
-                Ic.more, { nav.overlay = Overlay.Settings }, Modifier.offset(x = 20.dp),
-                size = 44.dp, bg = p.bg, desc = "Einstellungen"
-            )
-        }
-
-        // Kacheln in der eingestellten Reihenfolge (Einstellungen → Startseite)
-        HomeCfg.tiles.filter { it.second }.forEach { (tileId, _) ->
-            key(tileId) {
-                when (tileId) {
-                    "weather" -> {
-                        // Wetter
-                        val w = WeatherRepo.home
-                        Card(
-                            modifier = Modifier.heightIn(min = CARD_MIN),
-                            onClick = { nav.go(Tab.WETTER) },
-                            padding = PaddingValues(horizontal = 18.dp, vertical = 12.dp)
-                        ) {
-                            Row(Modifier.heightIn(min = CARD_MIN - 24.dp), verticalAlignment = Alignment.CenterVertically) {
-                                TwIcon(
-                                    if (w != null) w.look.icon else Ic.cloudSun, size = 40.dp,
-                                    tint = if (w != null) weatherTint(w.look.tint, w.day) else p.fill
-                                )
-                                Spacer(Modifier.width(14.dp))
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(WeatherRepo.homeName, color = p.ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                    Text(
-                                        when {
-                                            w != null -> w.look.text
-                                            WeatherRepo.loading -> "Wird geladen …"
-                                            !Loc.hasPermission(ctx) -> "Tippen für Standort-Wetter"
-                                            else -> WeatherRepo.error ?: "–"
-                                        },
-                                        color = p.sub, fontSize = 14.sp, maxLines = 1
-                                    )
-                                    if (w != null) {
-                                        SunDewLine(
-                                            sun = {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    TwIcon(Ic.sun, size = 14.dp, tint = p.accent)
-                                                    Text(
-                                                        "${sunHours(w.sunH)} Std.", color = p.accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                                                        modifier = Modifier.padding(start = 4.dp), maxLines = 1, softWrap = false
-                                                    )
-                                                }
-                                            },
-                                            sep = {
-                                                Box(
-                                                    Modifier
-                                                        .padding(horizontal = 9.dp)
-                                                        .size(width = 1.dp, height = 12.dp)
-                                                        .background(p.line)
-                                                )
-                                            },
-                                            dew = {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    TwIcon(Ic.droplet, size = 13.dp, tint = p.fill)
-                                                    Text(
-                                                        if (w.dew.isNaN()) "Taupunkt –" else "Taupunkt ${w.dew.roundToInt()}°",
-                                                        color = p.sub, fontSize = 13.sp,
-                                                        modifier = Modifier.padding(start = 4.dp), maxLines = 1, softWrap = false
-                                                    )
-                                                }
-                                            }
-                                        )
-                                    }
-                                }
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    if (w != null) "${w.temp.roundToInt()}°" else "–", style = num(36.sp, FontWeight.SemiBold), color = p.ink,
-                                    maxLines = 1, softWrap = false
-                                )
-                            }
-                            if (!Loc.hasPermission(ctx)) {
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    "Standort erlauben", color = p.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.clickable { askLocation() }
-                                )
-                            }
-                        }
-
+            // Kacheln in der eingestellten Reihenfolge (Einstellungen → Startseite)
+            HomeCfg.tiles.filter { it.second }.forEach { (tileId, _) ->
+                key(tileId) {
+                    when (tileId) {
+                        "date" -> DateTile(nav, store)
+                        "weather" -> WeatherTile(nav, store, askLocation)
+                        "quick" -> QuickRow(nav, store)
+                        "alarm" -> AlarmTile(nav, store)
+                        "currency" -> CurrencyCard(store)
+                        "altitude" -> AltitudeTile(nav, CARD_MIN)
+                        "breath" -> BreathMini()
+                        "calc" -> CalcTile()
+                        "notes" -> NotesTile()
                     }
-                    "alarm" -> {
-                        // Wecker – kompakt: nur der nächste Wecker, Tippen öffnet alle
-                        // Startwecker (unter Uhr → Wecker wählbar), sonst automatisch der nächste
-                        val homeId = store.getLong("homeAlarm", -1L).toInt()
-                        val next = store.alarms.firstOrNull { it.id == homeId }
-                            ?: store.alarms.filter { it.enabled }.minByOrNull { AlarmScheduler.nextTrigger(it).toEpochSecond() }
-                            ?: store.alarms.firstOrNull()
-                        Card(
-                            modifier = Modifier.heightIn(min = CARD_MIN),
-                            padding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
-                            onClick = { nav.overlay = Overlay.EditAlarm(next?.id) }
-                        ) {
-                            Row(Modifier.heightIn(min = CARD_MIN - 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                                if (next == null) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text("Wecker", color = p.sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                        Text("Noch kein Wecker – tippen zum Anlegen", color = p.ink, fontSize = 15.sp)
-                                    }
-                                } else {
-                                    Column(Modifier.weight(1f)) {
-                                        Text("Wecker", color = p.sub, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                        Text(
-                                            "${two(next.hour)}:${two(next.minute)}",
-                                            style = num(32.sp, FontWeight.SemiBold).copy(lineHeight = 36.sp),
-                                            color = if (next.enabled) p.ink else p.muted
-                                        )
-                                        Text(alarmSubtitle(next), color = p.sub, fontSize = 13.sp, maxLines = 1)
-                                    }
-                                    Toggle(next.enabled) { on ->
-                                        val na = next.copy(enabled = on)
-                                        store.upsertAlarm(na)
-                                        AlarmScheduler.schedule(ctx, na)
-                                    }
-                                }
-                            }
-                        }
-
-                    }
-                    "currency" -> CurrencyCard(store)
-                    "altitude" -> AltitudeTile(nav, CARD_MIN)
-                    "breath" -> BreathMini()
-                    "calc" -> CalcTile()
-                    "notes" -> NotesTile()
                 }
             }
+            Spacer(Modifier.height(8.dp))
         }
-
-        // Schnellzugriffe – frei belegbar
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HomeCfg.quick.forEach { id ->
-                val q = quickDef(id)
-                QuickTile(q, Modifier.weight(1f)) { runQuick(id, nav, ctx, store) }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
     }
 }
 
@@ -312,18 +184,6 @@ private fun SunDewLine(sun: @Composable () -> Unit, sep: @Composable () -> Unit,
                 a.place(0, 0)
                 d.place(0, a.height + gap)
             }
-        }
-    }
-}
-
-@Composable
-private fun QuickTile(q: QuickDef, modifier: Modifier, onClick: () -> Unit) {
-    val p = LocalPal.current
-    Card(modifier = modifier.height(78.dp), radius = 18.dp, padding = PaddingValues(6.dp), onClick = onClick) {
-        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            QuickBadge(q, 34.dp)
-            Spacer(Modifier.height(5.dp))
-            Text(q.label, color = p.ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
