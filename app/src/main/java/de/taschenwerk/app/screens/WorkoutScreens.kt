@@ -5,6 +5,7 @@ import android.speech.tts.TextToSpeech
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -282,7 +283,7 @@ private fun segments(w: Workout): List<Seg> {
 }
 
 @Composable
-fun WorkoutRunScreen(nav: Nav, id: String) {
+fun WorkoutRunScreen(nav: Nav, id: String, autoStart: Boolean = true) {
     val ctx = LocalContext.current
     val store = remember { Store.get(ctx) }
     val p = LocalPal.current
@@ -298,6 +299,8 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
     }
     var announce by remember { mutableStateOf(store.getBool("announce", true)) }
     var showGuide by remember { mutableStateOf(false) }
+    // Vom Startbildschirm aus erst eine Startansicht; aus der Liste (▶) direkt los
+    var started by remember { mutableStateOf(autoStart) }
     val voiceMode = remember { store.getString("voiceLang") ?: "auto" }
     val scope = rememberCoroutineScope()
 
@@ -396,7 +399,8 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(started) {
+        if (!started) return@LaunchedEffect
         go(0)
         var lastSec = -1
         while (isActive) {
@@ -415,6 +419,11 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
             }
             delay(50)
         }
+    }
+
+    if (!started) {
+        WorkoutReady(nav, w) { started = true }
+        return
     }
 
     if (finished) {
@@ -590,4 +599,87 @@ fun WorkoutRunScreen(nav: Nav, id: String) {
         }
     }
     if (showGuide) GuideDialog(w) { showGuide = false }
+}
+
+
+/** Startansicht eines Intervalls: Überblick, los geht es erst mit ▶. */
+@Composable
+private fun WorkoutReady(nav: Nav, w: de.taschenwerk.app.data.Workout, onStart: () -> Unit) {
+    val p = LocalPal.current
+    val ex = w.steps.count { !it.pause }
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircleButton(Ic.chevLeft, { nav.overlay = null }, size = 44.dp, bg = p.bg, desc = "Zurück")
+                Text(
+                    w.name, color = p.ink, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 4.dp)
+                )
+                CircleButton(Ic.edit, { nav.overlay = Overlay.EditWorkout(w.id) }, size = 40.dp, bg = p.bg, fg = p.sub, iconSize = 19.dp, desc = "Bearbeiten")
+            }
+            Column(
+                Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Spacer(Modifier.height(18.dp))
+                Text(hms(w.totalSec.toLong(), false), color = p.ink, style = num(56.sp, FontWeight.Bold))
+                Text(
+                    "$ex Übung${if (ex == 1) "" else "en"} · ${w.rounds} Runde${if (w.rounds == 1) "" else "n"}",
+                    color = p.sub, fontSize = 15.sp
+                )
+                Spacer(Modifier.height(20.dp))
+                Card(modifier = Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+                    var first = true
+                    if (w.prep > 0) {
+                        ReadyRow("Vorbereitung", w.prep, true)
+                        first = false
+                    }
+                    w.steps.forEach { st ->
+                        if (!first) Divider()
+                        first = false
+                        ReadyRow(st.name, st.sec, st.pause)
+                    }
+                }
+                if (w.rounds > 1) Text(
+                    "× ${w.rounds} Runden", color = p.sub, fontSize = 13.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, start = 4.dp)
+                )
+                Spacer(Modifier.height(110.dp))
+            }
+        }
+        de.taschenwerk.app.ui.Fab(
+            Ic.play, onStart,
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 22.dp), desc = "${w.name} starten"
+        )
+    }
+}
+
+@Composable
+private fun ReadyRow(name: String, sec: Int, muted: Boolean) {
+    val p = LocalPal.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(name, color = if (muted) p.sub else p.ink, fontSize = 15.sp, fontWeight = if (muted) FontWeight.Normal else FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(12.dp))
+        Text(hms(sec.toLong(), false), color = p.sub, style = num(15.sp, FontWeight.Normal), maxLines = 1)
+    }
 }

@@ -276,7 +276,8 @@ fun runQuick(id: String, nav: Nav, ctx: Context, store: Store) {
             val main = store.workouts.firstOrNull { it.id == "mein" }
                 ?: store.workouts.firstOrNull { !it.id.startsWith("apnea") }
                 ?: store.workouts.firstOrNull()
-            if (main != null) nav.overlay = Overlay.RunWorkout(main.id) else nav.go(Tab.UHR, 2)
+            // erst die Startansicht zeigen – los geht es mit ▶
+            if (main != null) nav.overlay = Overlay.RunWorkout(main.id, autoStart = false) else nav.go(Tab.UHR, 2)
         }
         id == "calc" -> nav.go(Tab.RECHNER, 0)
         id == "percent" -> nav.go(Tab.RECHNER, 1)

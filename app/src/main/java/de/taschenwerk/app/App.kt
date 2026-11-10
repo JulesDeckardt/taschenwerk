@@ -75,7 +75,7 @@ enum class Tab(val label: String) {
 sealed interface Overlay {
     data object Settings : Overlay
     data class EditWorkout(val id: String?) : Overlay
-    data class RunWorkout(val id: String) : Overlay
+    data class RunWorkout(val id: String, val autoStart: Boolean = true) : Overlay
     data class EditAlarm(val id: Int?) : Overlay
     data object Compass : Overlay
     data object Level : Overlay
@@ -209,7 +209,7 @@ fun TaschenwerkApp() {
                     when (ov) {
                         Overlay.Settings -> SettingsScreen(nav)
                         is Overlay.EditWorkout -> WorkoutEditScreen(nav, ov.id)
-                        is Overlay.RunWorkout -> WorkoutRunScreen(nav, ov.id)
+                        is Overlay.RunWorkout -> WorkoutRunScreen(nav, ov.id, ov.autoStart)
                         is Overlay.EditAlarm -> AlarmEditScreen(nav, ov.id)
                         Overlay.Compass -> de.taschenwerk.app.screens.CompassScreen(nav)
                         Overlay.Level -> de.taschenwerk.app.screens.LevelScreen(nav)

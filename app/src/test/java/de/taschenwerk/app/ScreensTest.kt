@@ -143,6 +143,35 @@ class ScreensTest {
         File(dir, "timer-schrift-130.png").outputStream().use { bmp!!.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    /** Startansicht eines Intervalls bei großer Schrift */
+    @Test fun intervallStart() {
+        setup()
+        rule.mainClock.autoAdvance = false
+        rule.setContent {
+            val ctx = LocalContext.current
+            val store = Store.get(ctx)
+            val d = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(d.density, 1.3f)) {
+                AppTheme(Scheme.GELB, 1) {
+                    val p = LocalPal.current
+                    androidx.compose.foundation.layout.Box(Modifier.width(360.dp).height(900.dp).background(p.bg)) {
+                        store.workouts.firstOrNull()?.let { de.taschenwerk.app.screens.WorkoutRunScreen(Nav(), it.id, autoStart = false) }
+                    }
+                }
+            }
+        }
+        repeat(20) { rule.mainClock.advanceTimeByFrame() }
+        var bmp: Bitmap? = null
+        rule.runOnUiThread {
+            val v = rule.activity.findViewById<android.view.View>(android.R.id.content)
+            val b = Bitmap.createBitmap(v.width.coerceAtLeast(1), v.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+            v.draw(android.graphics.Canvas(b))
+            bmp = b
+        }
+        val dir = File("build/screens").apply { mkdirs() }
+        File(dir, "intervall-start-130.png").outputStream().use { bmp!!.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
     @Test fun normal() = shot("start-schrift-100", 1.0f, NavCfg.MINI)
     @Test fun gross() = shot("start-schrift-130", 1.3f, NavCfg.MINI)
     @Test fun sehrGross() = shot("start-schrift-150", 1.5f, NavCfg.MINI)
