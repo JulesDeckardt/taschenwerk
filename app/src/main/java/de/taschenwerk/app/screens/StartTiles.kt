@@ -245,6 +245,12 @@ fun DateHeader(nav: Nav) {
             androidx.compose.ui.text.Placeholder(13.sp, 13.sp, androidx.compose.ui.text.PlaceholderVerticalAlign.TextCenter)
         ) { TwIcon(Ic.globe, tint = p.sub, modifier = Modifier.fillMaxSize()) }
     )
+    // Kopfzeile wächst mit der Systemschrift nur bis 115 %, damit die Berlin-Zeit immer daneben passt
+    val d0 = androidx.compose.ui.platform.LocalDensity.current
+    val capped = androidx.compose.ui.unit.Density(d0.density, d0.fontScale.coerceAtMost(1.15f))
+    var infoSize by remember(info.text) { mutableStateOf(13f) }
+    var infoReady by remember(info.text) { mutableStateOf(false) }
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides capped) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -258,12 +264,18 @@ fun DateHeader(nav: Nav) {
                 maxLines = 1, softWrap = false, modifier = Modifier.alignByBaseline()
             )
             Spacer(Modifier.width(10.dp))
+            // schrumpft bei Platzmangel (bis 10 sp), erst danach „…“
+            val atMin = infoSize <= 10f
             Text(
-                info, color = p.sub, fontSize = 13.sp, inlineContent = inline,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                info, color = p.sub, fontSize = infoSize.sp, inlineContent = inline,
+                maxLines = 1, softWrap = atMin, overflow = if (atMin) TextOverflow.Ellipsis else TextOverflow.Clip,
+                onTextLayout = { r ->
+                    if (r.didOverflowWidth && infoSize > 10f) infoSize = (infoSize * 0.92f).coerceAtLeast(10f) else infoReady = true
+                },
                 modifier = Modifier
                     .weight(1f, fill = false)
                     .alignByBaseline()
+                    .drawWithContent { if (infoReady) drawContent() }
             )
         }
         Box(
@@ -274,6 +286,7 @@ fun DateHeader(nav: Nav) {
                 .clickable { nav.overlay = Overlay.Settings },
             contentAlignment = Alignment.Center
         ) { TwIcon(Ic.more, size = 20.dp, desc = "Einstellungen") }
+    }
     }
 }
 
@@ -621,7 +634,7 @@ fun SecondCityPicker(store: Store) {
             modifier = Modifier.weight(1f),
             decorationBox = { inner ->
                 Box(contentAlignment = Alignment.CenterStart) {
-                    if (q.isEmpty()) Text("Stadt suchen, z. B. Bangkok", color = p.muted, fontSize = 15.sp, maxLines = 1)
+                    if (q.isEmpty()) Text("Stadt suchen", color = p.muted, fontSize = 15.sp, maxLines = 1)
                     inner()
                 }
             }
