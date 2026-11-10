@@ -46,7 +46,7 @@ import java.io.File
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w360dp-h900dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "w360dp-h1400dp-xxhdpi")
 class ScreensTest {
     @get:Rule
     val rule = createAndroidComposeRule<ComponentActivity>()
@@ -83,6 +83,7 @@ class ScreensTest {
                     DateHeader(nav)
                     WeatherTile(nav, store) {}
                     TimeTile(nav, store)
+                    de.taschenwerk.app.ui.Card { de.taschenwerk.app.screens.SecondCityPicker(store) }
                 }
                 if (mode == NavCfg.MINI) Column(Modifier.width(360.dp).background(p.bg)) { MiniDock(nav) }
             }
@@ -117,10 +118,12 @@ class ScreensTest {
         val ctx = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         val store = Store.get(ctx)
         store.putString("clock2Zone", "America/Argentina/Buenos_Aires")
+        store.putString("clock2Name", "Buenos Aires")
         NavCfg.load(store)
         NavCfg.mini = listOf("level", "torch", "compass", "alarmNew", "world", "currency")
         shot("start-lange-namen-130", 1.3f, NavCfg.MINI, "San Cristóbal de las Casas")
         store.putString("clock2Zone", "Europe/Berlin")
+        store.putString("clock2Name", "Berlin")
         NavCfg.mini = NavCfg.DEFAULT_MINI
     }
 }

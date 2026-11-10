@@ -2,6 +2,8 @@ package de.taschenwerk.app.screens
 
 import android.os.SystemClock
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -76,6 +78,9 @@ import kotlin.math.roundToInt
 /** Zone der zweiten Stadt (Einstellungen → Startseite), Standard Berlin. */
 fun secondZone(store: Store): String = store.getString("clock2Zone") ?: "Europe/Berlin"
 
+/** Name der zweiten Stadt, wie in den Einstellungen gewählt (z. B. „Bangkok“). */
+fun secondName(store: Store): String = store.getString("clock2Name") ?: shortCity(secondZone(store))
+
 /** Kurzer Städtename für eine Zeitzone („Mexiko-Stadt“ → „Mexiko“). */
 fun shortCity(zone: String): String = cityForZone(zone).removeSuffix("-Stadt")
 
@@ -86,7 +91,7 @@ fun secondTime(store: Store, t: ZonedDateTime): ZonedDateTime =
 /** z. B. „Berlin 14:30“ für den nächsten Klingeltermin eines Weckers. */
 fun alarmSecondText(store: Store, a: Alarm): String {
     val t = secondTime(store, AlarmScheduler.nextTrigger(a))
-    return "${shortCity(secondZone(store))} ${two(t.hour)}:${two(t.minute)}"
+    return "${secondName(store)} ${two(t.hour)}:${two(t.minute)}"
 }
 
 // ------------------------------------------------------------------ Bausteine
@@ -218,13 +223,27 @@ fun rememberHomeAltitude(store: Store): Double? {
     return alt
 }
 
-/** Datum frei oben (ohne Kachel), rechts daneben ⋮ für die Einstellungen. */
+/** Datum frei oben (ohne Kachel): „Mo, 9. Nov  KW 46 ⊕ Berlin 01:46“, rechts ⋮ für die Einstellungen. */
 @Composable
 fun DateHeader(nav: Nav) {
+    val ctx = LocalContext.current
+    val store = remember { Store.get(ctx) }
     val p = LocalPal.current
     val now by rememberNow(1000)
+    val there = secondTime(store, ZonedDateTime.now())
     val wd = now.format(DateTimeFormatter.ofPattern("EE", Locale.GERMAN)).removeSuffix(".")
     val mon = now.format(DateTimeFormatter.ofPattern("MMM", Locale.GERMAN)).removeSuffix(".")
+    // KW, Erdsymbol und Uhrzeit der zweiten Stadt als ein Text – so sitzt alles exakt auf derselben Grundlinie
+    val info = androidx.compose.ui.text.buildAnnotatedString {
+        append("KW ${now.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR)}  ")
+        appendInlineContent("globe", "·")
+        append("  ${secondName(store)} ${two(there.hour)}:${two(there.minute)}")
+    }
+    val inline = mapOf(
+        "globe" to androidx.compose.foundation.text.InlineTextContent(
+            androidx.compose.ui.text.Placeholder(13.sp, 13.sp, androidx.compose.ui.text.PlaceholderVerticalAlign.TextCenter)
+        ) { TwIcon(Ic.globe, tint = p.sub, modifier = Modifier.fillMaxSize()) }
+    )
     Row(
         Modifier
             .fillMaxWidth()
@@ -235,12 +254,15 @@ fun DateHeader(nav: Nav) {
         Row(Modifier.weight(1f)) {
             Text(
                 "$wd, ${now.dayOfMonth}. $mon", color = p.ink, fontSize = 22.sp, fontWeight = FontWeight.Bold,
-                maxLines = 1, modifier = Modifier.alignByBaseline()
+                maxLines = 1, softWrap = false, modifier = Modifier.alignByBaseline()
             )
             Spacer(Modifier.width(10.dp))
             Text(
-                "KW ${now.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR)}", color = p.sub, fontSize = 13.sp,
-                maxLines = 1, modifier = Modifier.alignByBaseline()
+                info, color = p.sub, fontSize = 13.sp, inlineContent = inline,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .alignByBaseline()
             )
         }
         Box(
@@ -428,52 +450,51 @@ private fun RowScope.CityCell(icon: androidx.compose.ui.graphics.vector.ImageVec
 }
 
 /**
- * Zeit-Kachel als kleine Tabelle: Spalten „Jetzt“ und „Wecker“ (linksbündig über den Zeiten),
- * Zeilen eigene Stadt und zweite Stadt; rechts der Wecker-Schalter, darunter die Schnellzugriffe.
+ * Wecker-Kachel: klein „Wecker · Mexiko“, groß die Weckzeit, klein darunter dieselbe Zeit in der zweiten Stadt;
+ * rechts der Schalter, darunter die Schnellzugriffe. „Klingelt in …“ steht nur beim Wecker stellen.
  */
 @Composable
 fun TimeTile(nav: Nav, store: Store) {
     val ctx = LocalContext.current
     val p = LocalPal.current
-    val now by rememberNow(1000)
-    val there = secondTime(store, ZonedDateTime.now())
     // Startwecker (unter Uhr → Wecker wählbar), sonst automatisch der nächste
     val homeId = store.getLong("homeAlarm", -1L).toInt()
     val next = store.alarms.firstOrNull { it.id == homeId }
         ?: store.alarms.filter { it.enabled }.minByOrNull { AlarmScheduler.nextTrigger(it).toEpochSecond() }
         ?: store.alarms.firstOrNull()
-    val trigThere = next?.let { secondTime(store, AlarmScheduler.nextTrigger(it)) }
     val on = next?.enabled == true
     Box {
         Card(modifier = Modifier.fillMaxWidth(), padding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 14.dp)) {
-            Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-                // Tabelle: jede Zeile eine Row, damit alles auch bei großer Schrift auf einer Linie bleibt
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Spacer(Modifier.weight(1.1f))
-                        HeadCell("Jetzt", 1f)
-                        HeadCell("Wecker", 1f)
-                    }
-                    val openWorld = { nav.go(Tab.UHR, 3) }
-                    val openAlarm = { nav.overlay = Overlay.EditAlarm(next?.id) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { nav.overlay = Overlay.EditAlarm(next?.id) }
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        CityCell(Ic.pin, shortCity(ZoneId.systemDefault().id))
-                        TimeCell("${two(now.hour)}:${two(now.minute)}", p.ink, openWorld)
-                        TimeCell(next?.let { "${two(it.hour)}:${two(it.minute)}" } ?: "–", if (on) p.ink else p.muted, openAlarm)
+                        TwIcon(Ic.alarm, size = 14.dp, tint = p.sub)
+                        Spacer(Modifier.width(5.dp))
+                        FitText("Wecker · ${shortCity(ZoneId.systemDefault().id)}", p.sub, androidx.compose.ui.text.TextStyle(fontSize = 12.5.sp), Modifier.weight(1f, fill = false), min = 9f)
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CityCell(Ic.globe, shortCity(secondZone(store)))
-                        TimeCell("${two(there.hour)}:${two(there.minute)}", p.ink, openWorld)
-                        TimeCell(trigThere?.let { "${two(it.hour)}:${two(it.minute)}" } ?: "–", if (on) p.sub else p.muted, openAlarm)
+                    if (next == null) {
+                        Text("Noch keiner – tippen zum Anlegen", color = p.ink, fontSize = 15.sp, modifier = Modifier.padding(vertical = 8.dp))
+                    } else {
+                        FitText(
+                            "${two(next.hour)}:${two(next.minute)}", if (on) p.ink else p.muted,
+                            num(36.sp, FontWeight.SemiBold).copy(lineHeight = 41.sp), min = 20f
+                        )
+                        val there = secondTime(store, AlarmScheduler.nextTrigger(next))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TwIcon(Ic.globe, size = 13.dp, tint = p.sub)
+                            Spacer(Modifier.width(5.dp))
+                            FitText(secondName(store), p.sub, androidx.compose.ui.text.TextStyle(fontSize = 12.5.sp), Modifier.weight(1f, fill = false), min = 9f)
+                            Spacer(Modifier.width(5.dp))
+                            FitText("${two(there.hour)}:${two(there.minute)}", if (on) p.sub else p.muted, num(13.5.sp, FontWeight.SemiBold), min = 9f)
+                        }
                     }
                 }
-                Box(
-                    Modifier
-                        .padding(horizontal = 14.dp, vertical = 2.dp)
-                        .width(1.dp)
-                        .fillMaxHeight()
-                        .background(p.line)
-                )
+                Spacer(Modifier.width(12.dp))
                 Box(Modifier.padding(end = if (showOpenArrows) 8.dp else 0.dp)) {
                     if (next != null) Toggle(next.enabled) { v ->
                         val na = next.copy(enabled = v)
@@ -496,6 +517,127 @@ fun TimeTile(nav: Nav, store: Store) {
         }
         OpenArrow()
     }
+}
+
+// ------------------------------------------------------------------ Zweite Stadt wählen (Einstellungen)
+
+data class CityHit(val name: String, val zone: String)
+
+/** Alle Städte: deutsche Namen aus der Städteliste, dazu alle Zeitzonen-Städte. */
+val ALL_CITY_HITS: List<CityHit> by lazy {
+    val de = CITIES.map { CityHit(it.first, it.second) }
+    val known = de.map { it.name.lowercase() }.toMutableSet()
+    val extra = ZoneId.getAvailableZoneIds()
+        .filter { '/' in it && !it.startsWith("Etc/") && !it.startsWith("SystemV/") }
+        .mapNotNull { z ->
+            val n = z.substringAfterLast('/').replace('_', ' ')
+            if (known.add(n.lowercase())) CityHit(n, z) else null
+        }
+    de + extra
+}
+
+/** Land einer Zeitzone auf Deutsch, z. B. „Thailand“. */
+fun zoneCountry(zone: String): String =
+    runCatching { android.icu.util.TimeZone.getRegion(zone) }.getOrNull()
+        ?.takeIf { it.length == 2 && it != "001" }
+        ?.let { Locale("", it).getDisplayCountry(Locale.GERMAN) }
+        ?: zone.substringBefore('/')
+
+/** Zeitabstand zur eigenen Zeitzone, z. B. „+13 Std.“, „+11½ Std.“, „gleich“. */
+fun zoneDiff(zone: String): String {
+    val now = java.time.Instant.now()
+    val here = ZoneId.systemDefault().rules.getOffset(now).totalSeconds
+    val there = runCatching { ZoneId.of(zone).rules.getOffset(now).totalSeconds }.getOrDefault(here)
+    val d = there - here
+    if (d == 0) return "gleich"
+    val sign = if (d > 0) "+" else "−"
+    val a = kotlin.math.abs(d)
+    val h = a / 3600
+    val m = (a % 3600) / 60
+    val frac = when (m) { 0 -> ""; 30 -> "½"; 45 -> "¾"; 15 -> "¼"; else -> ":${two(m)}" }
+    return "$sign$h$frac Std."
+}
+
+@Composable
+fun SecondCityPicker(store: Store) {
+    val p = LocalPal.current
+    var zone by remember { mutableStateOf(secondZone(store)) }
+    var name by remember { mutableStateOf(secondName(store)) }
+    var q by remember { mutableStateOf("") }
+    fun recent(): List<CityHit> = (store.getString("clock2Recent") ?: "Berlin;Europe/Berlin")
+        .split("|").mapNotNull { e -> e.split(";").takeIf { it.size == 2 }?.let { CityHit(it[0], it[1]) } }
+    var rec by remember { mutableStateOf(recent()) }
+    fun choose(h: CityHit) {
+        zone = h.zone
+        name = h.name
+        store.putString("clock2Zone", h.zone)
+        store.putString("clock2Name", h.name)
+        val list = (listOf(h) + rec).distinctBy { it.name + it.zone }.take(5)
+        store.putString("clock2Recent", list.joinToString("|") { "${it.name};${it.zone}" })
+        rec = list
+        q = ""
+    }
+
+    @Composable
+    fun hitRow(h: CityHit) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .clickable { choose(h) },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(h.name, color = p.ink, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(zoneCountry(h.zone), color = p.sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(zoneDiff(h.zone), color = p.sub, fontSize = 13.sp, maxLines = 1)
+            if (h.zone == zone && h.name == name) {
+                Spacer(Modifier.width(10.dp))
+                TwIcon(Ic.check, tint = p.ink, size = 18.dp)
+            }
+        }
+    }
+
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
+            .clip(shape)
+            .background(p.bg)
+            .border(if (q.isNotEmpty()) 2.dp else 1.dp, if (q.isNotEmpty()) p.accent else p.line, shape)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TwIcon(Ic.globe, tint = p.sub, size = 17.dp)
+        Spacer(Modifier.width(10.dp))
+        androidx.compose.foundation.text.BasicTextField(
+            value = q, onValueChange = { q = it.replace("\n", "") }, singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(color = p.ink, fontSize = 15.sp),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(p.ink),
+            modifier = Modifier.weight(1f),
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (q.isEmpty()) Text("Stadt suchen, z. B. Bangkok", color = p.muted, fontSize = 15.sp, maxLines = 1)
+                    inner()
+                }
+            }
+        )
+    }
+    if (q.trim().length >= 2) {
+        val t = q.trim().lowercase()
+        val hits = ALL_CITY_HITS.filter { it.name.lowercase().contains(t) }
+            .sortedBy { if (it.name.lowercase().startsWith(t)) 0 else 1 }
+            .take(8)
+        Text("Treffer", color = p.sub, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 10.dp))
+        if (hits.isEmpty()) Text("Keine Stadt gefunden", color = p.sub, fontSize = 14.sp, modifier = Modifier.padding(vertical = 8.dp))
+        hits.forEachIndexed { i, h -> if (i > 0) de.taschenwerk.app.ui.Divider(); hitRow(h) }
+    }
+    Text("Zuletzt", color = p.sub, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 10.dp))
+    val shown = (listOf(CityHit(name, zone)) + rec).distinctBy { it.name + it.zone }
+    shown.forEachIndexed { i, h -> if (i > 0) de.taschenwerk.app.ui.Divider(); hitRow(h) }
 }
 
 @Composable

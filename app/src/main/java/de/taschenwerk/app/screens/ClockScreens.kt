@@ -337,7 +337,7 @@ fun AlarmEditScreen(nav: Nav, id: Int?) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         TwIcon(Ic.globe, size = 15.dp, tint = p.sub)
-                        Text(shortCity(secondZone(store)) + " ", color = p.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 6.dp))
+                        Text(secondName(store) + " ", color = p.sub, fontSize = 13.sp, modifier = Modifier.padding(start = 6.dp))
                         Text("${two(there.hour)}:${two(there.minute)}", color = p.ink, style = num(13.sp, FontWeight.Bold))
                         Text(" · " + there.format(DateTimeFormatter.ofPattern("EE", Locale.GERMAN)).removeSuffix("."), color = p.sub, fontSize = 13.sp)
                     }

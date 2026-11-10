@@ -437,17 +437,9 @@ fun HomeSettingsPage(onBack: () -> Unit) {
             }
 
             SettingLabel("Zweite Stadt")
-            Card(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
-                var zone by remember { mutableStateOf(secondZone(store)) }
-                (listOf("Europe/Berlin") + store.zones).distinct().forEachIndexed { i, z ->
-                    if (i > 0) Divider()
-                    RowItem(cityForZone(z), onClick = { zone = z; store.putString("clock2Zone", z) }, trailing = {
-                        if (z == zone) TwIcon(Ic.check, tint = p.ink, size = 18.dp)
-                    })
-                }
-            }
+            Card(padding = PaddingValues(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 4.dp)) { SecondCityPicker(store) }
             Text(
-                "Steht oben in der Datums-Kachel und bei jedem Wecker. Weitere Städte fügst du unter Uhr → Weltzeit hinzu.",
+                "Steht klein neben dem Datum und unter jedem Wecker.",
                 color = p.sub, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp)
             )
 
