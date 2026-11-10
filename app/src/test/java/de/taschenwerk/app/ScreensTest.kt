@@ -90,8 +90,10 @@ class ScreensTest {
 
     private fun shot(name: String, scale: Float, mode: String) {
         setup()
+        // Uhren und Ticker laufen endlos – Zeit nur von Hand weiterdrehen
+        rule.mainClock.autoAdvance = false
         rule.setContent { Column { Page(scale, mode) } }
-        rule.waitForIdle()
+        repeat(20) { rule.mainClock.advanceTimeByFrame() }
         val bmp = rule.onRoot().captureToImage().asAndroidBitmap()
         val dir = File("build/screens").apply { mkdirs() }
         File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
