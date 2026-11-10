@@ -13,7 +13,8 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -48,7 +49,7 @@ import java.io.File
 @Config(sdk = [34], qualifiers = "w360dp-h900dp-xxhdpi")
 class ScreensTest {
     @get:Rule
-    val rule = createComposeRule()
+    val rule = createAndroidComposeRule<ComponentActivity>()
 
     private fun setup() {
         WeatherRepo.homeName = "Ciudad de México"
@@ -94,9 +95,16 @@ class ScreensTest {
         rule.mainClock.autoAdvance = false
         rule.setContent { Column { Page(scale, mode) } }
         repeat(20) { rule.mainClock.advanceTimeByFrame() }
-        val bmp = rule.onRoot().captureToImage().asAndroidBitmap()
+        // Direkt in ein Bitmap zeichnen (ohne auf Bildschirm-Frames zu warten)
+        var bmp: Bitmap? = null
+        rule.runOnUiThread {
+            val v = rule.activity.findViewById<android.view.View>(android.R.id.content)
+            val b = Bitmap.createBitmap(v.width.coerceAtLeast(1), v.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+            v.draw(android.graphics.Canvas(b))
+            bmp = b
+        }
         val dir = File("build/screens").apply { mkdirs() }
-        File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        File(dir, "$name.png").outputStream().use { bmp!!.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
     @Test fun normal() = shot("start-schrift-100", 1.0f, NavCfg.MINI)
