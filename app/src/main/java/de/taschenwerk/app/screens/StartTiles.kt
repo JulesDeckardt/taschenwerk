@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -227,7 +228,7 @@ fun DateHeader(nav: Nav) {
     Row(
         Modifier
             .fillMaxWidth()
-            .height(44.dp)
+            .heightIn(min = 44.dp)
             .padding(start = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -268,8 +269,11 @@ fun FitText(
     val base = style.fontSize
     var cur by remember(text, base) { mutableStateOf(base) }
     var ready by remember(text, base) { mutableStateOf(false) }
+    // Am Minimum angekommen: lieber mit „…“ kürzen als abschneiden
+    val atMin = cur.value <= min
     Text(
-        text, color = color, style = style.copy(fontSize = cur), maxLines = 1, softWrap = false,
+        text, color = color, style = style.copy(fontSize = cur), maxLines = 1, softWrap = atMin,
+        overflow = if (atMin) TextOverflow.Ellipsis else TextOverflow.Clip,
         modifier = modifier.drawWithContent { if (ready) drawContent() },
         onTextLayout = { r ->
             if (r.didOverflowWidth && cur.value > min) cur = (cur.value * 0.92f).coerceAtLeast(min).sp
@@ -283,7 +287,7 @@ private fun Metric(icon: androidx.compose.ui.graphics.vector.ImageVector, tint: 
     val p = LocalPal.current
     var m = Modifier
         .fillMaxWidth()
-        .height(22.dp)
+        .heightIn(min = 22.dp)
     if (onClick != null) m = m
         .clip(RoundedCornerShape(6.dp))
         .clickable { onClick() }
@@ -320,7 +324,7 @@ private fun WeatherBlock(nav: Nav, store: Store, askLocation: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(Modifier.height(46.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.heightIn(min = 46.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     TwIcon(
                         if (w != null) w.look.icon else Ic.cloudSun, size = 46.dp,
                         tint = if (w != null) weatherTint(w.look.tint, w.day) else p.fill
@@ -331,16 +335,16 @@ private fun WeatherBlock(nav: Nav, store: Store, askLocation: () -> Unit) {
                         num(46.sp, FontWeight.SemiBold).copy(lineHeight = 46.sp), Modifier.weight(1f, fill = false), min = 24f
                     )
                 }
-                Row(Modifier.height(22.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.heightIn(min = 22.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     TwIcon(Ic.pin, size = 13.dp, tint = p.sub)
                     Spacer(Modifier.width(4.dp))
-                    Text(
+                    FitText(
                         when {
                             WeatherRepo.homeName.isNotBlank() -> WeatherRepo.homeName
                             WeatherRepo.loading -> "Wird geladen …"
                             else -> "–"
                         },
-                        color = p.sub, fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                        p.sub, androidx.compose.ui.text.TextStyle(fontSize = 12.5.sp), Modifier.weight(1f, fill = false), min = 10f
                     )
                 }
             }
@@ -388,26 +392,38 @@ fun WeatherTile(nav: Nav, store: Store, askLocation: () -> Unit) {
 // ------------------------------------------------------------------ Uhr-Kachel: Wecker + Schnellzugriffe
 
 @Composable
-private fun HeadCell(t: String) {
-    Box(Modifier.height(16.dp), contentAlignment = Alignment.CenterStart) {
-        Text(t, color = LocalPal.current.sub, fontSize = 11.sp, maxLines = 1)
+private fun RowScope.HeadCell(t: String, w: Float) {
+    Box(Modifier.weight(w).padding(end = 6.dp), contentAlignment = Alignment.CenterStart) {
+        FitText(t, LocalPal.current.sub, androidx.compose.ui.text.TextStyle(fontSize = 11.sp), min = 8f)
     }
 }
 
 @Composable
-private fun TimeCell(t: String, c: androidx.compose.ui.graphics.Color) {
-    Box(Modifier.height(28.dp), contentAlignment = Alignment.CenterStart) {
-        FitText(t, c, num(21.sp, FontWeight.SemiBold).copy(lineHeight = 24.sp), min = 12f)
+private fun RowScope.TimeCell(t: String, c: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .weight(1f)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(end = 6.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        FitText(t, c, num(21.sp, FontWeight.SemiBold), min = 12f)
     }
 }
 
 @Composable
-private fun CityCell(icon: androidx.compose.ui.graphics.vector.ImageVector, name: String) {
+private fun RowScope.CityCell(icon: androidx.compose.ui.graphics.vector.ImageVector, name: String) {
     val p = LocalPal.current
-    Row(Modifier.height(28.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier
+            .weight(1.1f)
+            .padding(end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         TwIcon(icon, size = 14.dp, tint = p.sub)
         Spacer(Modifier.width(6.dp))
-        FitText(name, p.sub, androidx.compose.ui.text.TextStyle(fontSize = 13.sp), min = 9f)
+        FitText(name, p.sub, androidx.compose.ui.text.TextStyle(fontSize = 13.sp), Modifier.weight(1f, fill = false), min = 9f)
     }
 }
 
@@ -431,35 +447,25 @@ fun TimeTile(nav: Nav, store: Store) {
     Box {
         Card(modifier = Modifier.fillMaxWidth(), padding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 14.dp)) {
             Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1.1f)) {
-                    Spacer(Modifier.height(18.dp))
-                    CityCell(Ic.pin, shortCity(ZoneId.systemDefault().id))
-                    Spacer(Modifier.height(4.dp))
-                    CityCell(Ic.globe, shortCity(secondZone(store)))
-                }
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { nav.go(Tab.UHR, 3) }
-                ) {
-                    HeadCell("Jetzt")
-                    Spacer(Modifier.height(2.dp))
-                    TimeCell("${two(now.hour)}:${two(now.minute)}", p.ink)
-                    Spacer(Modifier.height(4.dp))
-                    TimeCell("${two(there.hour)}:${two(there.minute)}", p.ink)
-                }
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { nav.overlay = Overlay.EditAlarm(next?.id) }
-                ) {
-                    HeadCell("Wecker")
-                    Spacer(Modifier.height(2.dp))
-                    TimeCell(next?.let { "${two(it.hour)}:${two(it.minute)}" } ?: "–", if (on) p.ink else p.muted)
-                    Spacer(Modifier.height(4.dp))
-                    TimeCell(trigThere?.let { "${two(it.hour)}:${two(it.minute)}" } ?: "–", if (on) p.sub else p.muted)
+                // Tabelle: jede Zeile eine Row, damit alles auch bei großer Schrift auf einer Linie bleibt
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Spacer(Modifier.weight(1.1f))
+                        HeadCell("Jetzt", 1f)
+                        HeadCell("Wecker", 1f)
+                    }
+                    val openWorld = { nav.go(Tab.UHR, 3) }
+                    val openAlarm = { nav.overlay = Overlay.EditAlarm(next?.id) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CityCell(Ic.pin, shortCity(ZoneId.systemDefault().id))
+                        TimeCell("${two(now.hour)}:${two(now.minute)}", p.ink, openWorld)
+                        TimeCell(next?.let { "${two(it.hour)}:${two(it.minute)}" } ?: "–", if (on) p.ink else p.muted, openAlarm)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CityCell(Ic.globe, shortCity(secondZone(store)))
+                        TimeCell("${two(there.hour)}:${two(there.minute)}", p.ink, openWorld)
+                        TimeCell(trigThere?.let { "${two(it.hour)}:${two(it.minute)}" } ?: "–", if (on) p.sub else p.muted, openAlarm)
+                    }
                 }
                 Box(
                     Modifier

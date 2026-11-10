@@ -89,8 +89,9 @@ class ScreensTest {
         }
     }
 
-    private fun shot(name: String, scale: Float, mode: String) {
+    private fun shot(name: String, scale: Float, mode: String, place: String? = null) {
         setup()
+        if (place != null) WeatherRepo.homeName = place
         // Uhren und Ticker laufen endlos – Zeit nur von Hand weiterdrehen
         rule.mainClock.autoAdvance = false
         rule.setContent { Column { Page(scale, mode) } }
@@ -110,4 +111,16 @@ class ScreensTest {
     @Test fun normal() = shot("start-schrift-100", 1.0f, NavCfg.MINI)
     @Test fun gross() = shot("start-schrift-130", 1.3f, NavCfg.MINI)
     @Test fun sehrGross() = shot("start-schrift-150", 1.5f, NavCfg.MINI)
+
+    /** Lange Namen: Ort, zweite Stadt und alle Mini-Knöpfe */
+    @Test fun langeNamen() {
+        val ctx = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val store = Store.get(ctx)
+        store.putString("clock2Zone", "America/Argentina/Buenos_Aires")
+        NavCfg.load(store)
+        NavCfg.mini = listOf("level", "torch", "compass", "alarmNew", "world", "currency")
+        shot("start-lange-namen-130", 1.3f, NavCfg.MINI, "San Cristóbal de las Casas")
+        store.putString("clock2Zone", "Europe/Berlin")
+        NavCfg.mini = NavCfg.DEFAULT_MINI
+    }
 }
