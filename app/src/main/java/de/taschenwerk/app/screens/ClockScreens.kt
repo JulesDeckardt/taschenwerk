@@ -892,7 +892,7 @@ fun TimerPage(nav: Nav) {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .height(46.dp)
+                            .heightIn(min = 46.dp)
                             .pointerInput(pr) { detectTapGestures(onLongPress = { removePreset = pr }, onTap = { TimerStore.start(ctx, pr.sec * 1000L, pr.name) }) },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -909,8 +909,9 @@ fun TimerPage(nav: Nav) {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .height(54.dp)
-                            .clickable { nav.overlay = Overlay.EditWorkout(w.id) },
+                            .heightIn(min = 54.dp)
+                            .clickable { nav.overlay = Overlay.EditWorkout(w.id) }
+                            .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f)) {
