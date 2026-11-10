@@ -238,7 +238,9 @@ fun DateHeader(nav: Nav) {
     val info = androidx.compose.ui.text.buildAnnotatedString {
         append("KW ${now.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR)}  ")
         appendInlineContent("globe", "·")
-        append("  ${secondName(store)} ${two(there.hour)}:${two(there.minute)}")
+        // lange Städtenamen kürzen, damit die Uhrzeit nie wegfällt
+        val n = secondName(store).let { if (it.length > 10) it.take(9).trimEnd() + "…" else it }
+        append("  $n ${two(there.hour)}:${two(there.minute)}")
     }
     val inline = mapOf(
         "globe" to androidx.compose.foundation.text.InlineTextContent(
