@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -107,6 +108,39 @@ class ScreensTest {
         }
         val dir = File("build/screens").apply { mkdirs() }
         File(dir, "$name.png").outputStream().use { bmp!!.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    /** Timer-Tab bei großer Schrift */
+    @Test fun timer() {
+        setup()
+        rule.mainClock.autoAdvance = false
+        rule.setContent {
+            val ctx = LocalContext.current
+            val store = Store.get(ctx)
+            if (store.presets.isEmpty()) {
+                store.presets.add(de.taschenwerk.app.data.TimerPreset("Eier", 420))
+                store.presets.add(de.taschenwerk.app.data.TimerPreset("Projekt", 3600))
+            }
+            val d = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(d.density, 1.3f)) {
+                AppTheme(Scheme.GELB, 1) {
+                    val p = LocalPal.current
+                    androidx.compose.foundation.layout.Box(Modifier.width(360.dp).height(1100.dp).background(p.bg)) {
+                        de.taschenwerk.app.screens.TimerPage(Nav())
+                    }
+                }
+            }
+        }
+        repeat(20) { rule.mainClock.advanceTimeByFrame() }
+        var bmp: Bitmap? = null
+        rule.runOnUiThread {
+            val v = rule.activity.findViewById<android.view.View>(android.R.id.content)
+            val b = Bitmap.createBitmap(v.width.coerceAtLeast(1), v.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+            v.draw(android.graphics.Canvas(b))
+            bmp = b
+        }
+        val dir = File("build/screens").apply { mkdirs() }
+        File(dir, "timer-schrift-130.png").outputStream().use { bmp!!.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
     @Test fun normal() = shot("start-schrift-100", 1.0f, NavCfg.MINI)

@@ -903,7 +903,7 @@ fun TimerPage(nav: Nav) {
             }
 
             SmallTitle("Intervall", "Neu") { nav.overlay = Overlay.EditWorkout(null) }
-            if (store.workouts.isNotEmpty()) Card(padding = PaddingValues(start = 16.dp, end = 8.dp, top = 2.dp, bottom = 2.dp)) {
+            if (store.workouts.isNotEmpty()) Card(padding = PaddingValues(start = 16.dp, end = 12.dp, top = 2.dp, bottom = 2.dp)) {
                 store.workouts.forEachIndexed { i, w ->
                     if (i > 0) Divider()
                     Row(
@@ -918,8 +918,10 @@ fun TimerPage(nav: Nav) {
                             val ex = w.steps.count { !it.pause }
                             Text("$ex Übung${if (ex == 1) "" else "en"} · ${w.rounds} Runden", color = p.sub, fontSize = 12.sp)
                         }
-                        Text(hms(w.totalSec.toLong(), false), style = num(16.sp, FontWeight.Normal), color = p.sub)
-                        CircleButton(Ic.play, { nav.overlay = Overlay.RunWorkout(w.id) }, size = 38.dp, bg = p.card, iconSize = 16.dp, desc = "${w.name} starten")
+                        Text(hms(w.totalSec.toLong(), false), style = num(16.sp, FontWeight.Normal), color = p.sub, maxLines = 1)
+                        // Abstand zur Dauer, Knopf etwas kleiner
+                        Spacer(Modifier.width(14.dp))
+                        CircleButton(Ic.play, { nav.overlay = Overlay.RunWorkout(w.id) }, size = 32.dp, bg = p.track, iconSize = 13.dp, desc = "${w.name} starten")
                     }
                 }
             }
@@ -938,14 +940,16 @@ fun TimerPage(nav: Nav) {
 
     if (addPreset) {
         var name by remember { mutableStateOf("") }
+        // Eigene Dauer für den gespeicherten Timer – die großen Räder oben gelten nur für den Timer, den man gleich startet
+        var ph by remember { mutableIntStateOf(h) }
+        var pm by remember { mutableIntStateOf(if (h == 0 && m == 0 && s == 0) 5 else m) }
+        var ps by remember { mutableIntStateOf(s) }
         AlertDialog(
             onDismissRequest = { addPreset = false },
             containerColor = p.card,
             title = { Text("Timer speichern", color = p.ink) },
             text = {
                 Column {
-                    Text("Dauer: ${hms(h * 3600L + m * 60L + s)}", color = p.sub)
-                    Spacer(Modifier.height(10.dp))
                     Box(
                         Modifier
                             .fillMaxWidth()
@@ -960,11 +964,32 @@ fun TimerPage(nav: Nav) {
                             decorationBox = { inner -> if (name.isEmpty()) Text("Name, z. B. Eier", color = p.muted); inner() }
                         )
                     }
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            NumberWheel(24, ph, { ph = it }, width = 62.dp, big = 26.sp, itemHeight = 40.dp)
+                            Text("Std.", color = p.sub, fontSize = 12.sp)
+                        }
+                        Text(":", style = num(22.sp), color = p.ink, modifier = Modifier.padding(horizontal = 2.dp).padding(bottom = 16.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            NumberWheel(60, pm, { pm = it }, width = 62.dp, big = 26.sp, itemHeight = 40.dp)
+                            Text("Min.", color = p.sub, fontSize = 12.sp)
+                        }
+                        Text(":", style = num(22.sp), color = p.ink, modifier = Modifier.padding(horizontal = 2.dp).padding(bottom = 16.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            NumberWheel(60, ps, { ps = it }, width = 62.dp, big = 26.sp, itemHeight = 40.dp)
+                            Text("Sek.", color = p.sub, fontSize = 12.sp)
+                        }
+                    }
                 }
             },
             confirmButton = {
                 TextButton({
-                    val sec = h * 3600 + m * 60 + s
+                    val sec = ph * 3600 + pm * 60 + ps
                     if (sec > 0) {
                         store.presets.add(TimerPreset(name.ifBlank { "Timer" }, sec))
                         store.savePresets()

@@ -136,7 +136,9 @@ fun NumberWheel(
             first = false
         }
     }
-    val style = num(big, FontWeight.SemiBold)
+    // Räder haben feste Höhe: Ziffern wachsen mit der Systemschrift höchstens bis 115 %
+    val fs = LocalDensity.current.fontScale
+    val style = num(if (fs > 1.15f) (big.value * 1.15f / fs).sp else big, FontWeight.SemiBold)
     Box(modifier.width(width).height(itemHeight * 3), contentAlignment = Alignment.Center) {
         // dezente Auswahlfläche hinter der mittleren Zeile
         Box(
