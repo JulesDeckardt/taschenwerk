@@ -1,0 +1,42 @@
+name: Screenshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - name: Render
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle testDebugUnitTest --tests '*ScreensTest*' --no-daemon 2>&1 | tee shots.log || true
+      - name: Publish
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p /tmp/out
+          cp shots.log /tmp/out/ || true
+          cp app/build/screens/*.png /tmp/out/ 2>/dev/null || true
+          cp -r app/build/reports/tests /tmp/out/reports 2>/dev/null || true
+          git config user.name ci
+          git config user.email ci@users.noreply.github.com
+          git checkout --orphan screens
+          git rm -rf --cached . > /dev/null
+          git clean -fdxq
+          cp -r /tmp/out/* .
+          git add -A
+          git commit -qm "Screens ${{ github.run_number }}"
+          git push -f origin screens
