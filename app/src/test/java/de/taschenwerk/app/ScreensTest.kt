@@ -172,6 +172,42 @@ class ScreensTest {
         File(dir, "intervall-start-130.png").outputStream().use { bmp!!.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    /** Notiz mit langen Einträgen bei großer Schrift */
+    @Test fun notiz() {
+        setup()
+        val ctx = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val store = Store.get(ctx)
+        store.putBool("notesOpen", true)
+        de.taschenwerk.app.screens.Notes.items = listOf(
+            de.taschenwerk.app.screens.NoteItem(1, "Milch 25", false),
+            de.taschenwerk.app.screens.NoteItem(2, "Beim Markt nach frischen Tomaten, Koriander, Limetten und den guten Avocados fragen, falls die vom letzten Mal wieder da sind 60", false),
+            de.taschenwerk.app.screens.NoteItem(3, "Geschenk für Ana besorgen – irgendwas Kleines, vielleicht Blumen oder ein Buch, und eine Karte nicht vergessen", false),
+            de.taschenwerk.app.screens.NoteItem(4, "Brot 18,50", true)
+        )
+        rule.mainClock.autoAdvance = false
+        rule.setContent {
+            val d = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(d.density, 1.3f)) {
+                AppTheme(Scheme.GELB, 1) {
+                    val p = LocalPal.current
+                    Column(Modifier.width(360.dp).background(p.bg).padding(16.dp)) {
+                        de.taschenwerk.app.screens.NotesTile()
+                    }
+                }
+            }
+        }
+        repeat(20) { rule.mainClock.advanceTimeByFrame() }
+        var bmp: Bitmap? = null
+        rule.runOnUiThread {
+            val v = rule.activity.findViewById<android.view.View>(android.R.id.content)
+            val b = Bitmap.createBitmap(v.width.coerceAtLeast(1), v.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+            v.draw(android.graphics.Canvas(b))
+            bmp = b
+        }
+        val dir = File("build/screens").apply { mkdirs() }
+        File(dir, "notiz-lang-130.png").outputStream().use { bmp!!.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
     @Test fun normal() = shot("start-schrift-100", 1.0f, NavCfg.MINI)
     @Test fun gross() = shot("start-schrift-130", 1.3f, NavCfg.MINI)
     @Test fun sehrGross() = shot("start-schrift-150", 1.5f, NavCfg.MINI)

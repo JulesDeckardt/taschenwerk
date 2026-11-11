@@ -546,7 +546,8 @@ private fun NoteRow(item: NoteItem, label: String, amount: Double?, onToggle: ()
         Modifier
             .fillMaxWidth()
             .heightIn(min = 40.dp),
-        verticalAlignment = Alignment.CenterVertically
+        // lange Einträge: Häkchen bleibt oben an der ersten Zeile
+        verticalAlignment = Alignment.Top
     ) {
         CheckMark(item.done, onToggle)
         Spacer(Modifier.width(8.dp))
@@ -556,15 +557,21 @@ private fun NoteRow(item: NoteItem, label: String, amount: Double?, onToggle: ()
             var had by remember { mutableStateOf(false) }
             BasicTextField(
                 value = tf,
-                onValueChange = { tf = it },
-                singleLine = true,
+                // Zeilenumbruch der Tastatur = fertig; sonst bricht der Text beliebig oft um
+                onValueChange = { v ->
+                    if ('\n' in v.text) {
+                        tf = v.copy(text = v.text.replace("\n", ""))
+                        focusManager.clearFocus()
+                    } else tf = v
+                },
+                singleLine = false,
                 textStyle = TextStyle(color = p.ink, fontSize = 15.sp),
                 cursorBrush = SolidColor(p.ink),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 6.dp)
+                    .padding(end = 6.dp, top = 8.dp, bottom = 8.dp)
                     .focusRequester(fr)
                     .onFocusChanged {
                         if (it.isFocused) had = true
@@ -581,13 +588,15 @@ private fun NoteRow(item: NoteItem, label: String, amount: Double?, onToggle: ()
                     .weight(1f)
                     .heightIn(min = 40.dp)
                     .clickable { editing = true }
-                    .padding(end = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(end = 6.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.Top
             ) {
+                // ganzer Text, beliebig viele Zeilen
                 Text(
                     label, color = color, fontSize = 15.sp, textDecoration = deco,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f)
                 )
+                if (amount != null) Spacer(Modifier.width(8.dp))
                 if (amount != null) Text(
                     fmt(amount, 2), color = color, textDecoration = deco,
                     style = num(15.sp, if (item.done) FontWeight.Medium else FontWeight.SemiBold)
@@ -607,14 +616,21 @@ private fun NewNoteRow(onAdd: (String) -> Unit) {
         Modifier
             .fillMaxWidth()
             .heightIn(min = 40.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
         Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) { TwIcon(Ic.plus, tint = p.muted, size = 20.dp) }
         Spacer(Modifier.width(8.dp))
         BasicTextField(
             value = text,
-            onValueChange = { text = it.replace("\n", "") },
-            singleLine = true,
+            // Zeilenumbruch der Tastatur legt den Eintrag an; sonst bricht der Text beliebig oft um
+            onValueChange = { v ->
+                if ('\n' in v) {
+                    val t = v.replace("\n", "")
+                    if (t.isNotBlank()) onAdd(t.trim())
+                    text = ""
+                } else text = v
+            },
+            singleLine = false,
             textStyle = TextStyle(color = p.ink, fontSize = 15.sp),
             cursorBrush = SolidColor(p.ink),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
@@ -627,6 +643,7 @@ private fun NewNoteRow(onAdd: (String) -> Unit) {
             }),
             modifier = Modifier
                 .weight(1f)
+                .padding(top = 8.dp, bottom = 8.dp)
                 .onFocusChanged {
                     if (it.isFocused) had = true
                     else if (had && text.isNotBlank()) {
