@@ -43,6 +43,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -513,11 +514,11 @@ fun NotesTile() {
 }
 
 @Composable
-private fun CheckMark(done: Boolean, onToggle: () -> Unit) {
+private fun CheckMark(done: Boolean, modifier: Modifier = Modifier, onToggle: () -> Unit) {
     val p = LocalPal.current
     val shape = RoundedCornerShape(7.dp)
     Box(
-        Modifier
+        modifier
             .size(34.dp)
             .clip(CircleShape)
             .clickable { onToggle() },
@@ -542,14 +543,15 @@ private fun NoteRow(item: NoteItem, label: String, amount: Double?, onToggle: ()
     var editing by remember { mutableStateOf(false) }
     val color = if (item.done) p.muted else p.ink
     val deco = if (item.done) TextDecoration.LineThrough else null
+    // Häkchen mittig zur ersten Textzeile: Grundlinie liegt ca. 0,35 Schriftgrößen unter der Zeilenmitte
+    val baseOff = with(LocalDensity.current) { (15.sp * 0.35f).roundToPx() }
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 40.dp),
-        // lange Einträge: Häkchen bleibt oben an der ersten Zeile
-        verticalAlignment = Alignment.Top
     ) {
-        CheckMark(item.done, onToggle)
+        // lange Einträge: Häkchen bleibt an der ersten Zeile, exakt auf ihrer Höhe
+        CheckMark(item.done, Modifier.alignBy { it.measuredHeight / 2 + baseOff }, onToggle)
         Spacer(Modifier.width(8.dp))
         if (editing) {
             var tf by remember { mutableStateOf(TextFieldValue(item.text, TextRange(item.text.length))) }
@@ -571,6 +573,7 @@ private fun NoteRow(item: NoteItem, label: String, amount: Double?, onToggle: ()
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 modifier = Modifier
                     .weight(1f)
+                    .alignBy(FirstBaseline)
                     .padding(end = 6.dp, top = 8.dp, bottom = 8.dp)
                     .focusRequester(fr)
                     .onFocusChanged {
@@ -586,19 +589,20 @@ private fun NoteRow(item: NoteItem, label: String, amount: Double?, onToggle: ()
             Row(
                 Modifier
                     .weight(1f)
-                    .heightIn(min = 40.dp)
+                    .alignBy(FirstBaseline)
                     .clickable { editing = true }
-                    .padding(end = 6.dp, top = 8.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.Top
+                    .padding(end = 6.dp, top = 8.dp, bottom = 8.dp)
             ) {
-                // ganzer Text, beliebig viele Zeilen
+                // ganzer Text, beliebig viele Zeilen; Betrag auf derselben Grundlinie wie die erste Zeile
                 Text(
                     label, color = color, fontSize = 15.sp, textDecoration = deco,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .alignBy(FirstBaseline)
                 )
                 if (amount != null) Spacer(Modifier.width(8.dp))
                 if (amount != null) Text(
-                    fmt(amount, 2), color = color, textDecoration = deco,
+                    fmt(amount, 2), color = color, textDecoration = deco, modifier = Modifier.alignBy(FirstBaseline),
                     style = num(15.sp, if (item.done) FontWeight.Medium else FontWeight.SemiBold)
                 )
             }
@@ -612,13 +616,13 @@ private fun NewNoteRow(onAdd: (String) -> Unit) {
     val focusManager = LocalFocusManager.current
     var text by remember { mutableStateOf("") }
     var had by remember { mutableStateOf(false) }
+    val baseOff = with(LocalDensity.current) { (15.sp * 0.35f).roundToPx() }
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 40.dp),
-        verticalAlignment = Alignment.Top
     ) {
-        Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) { TwIcon(Ic.plus, tint = p.muted, size = 20.dp) }
+        Box(Modifier.size(34.dp).alignBy { it.measuredHeight / 2 + baseOff }, contentAlignment = Alignment.Center) { TwIcon(Ic.plus, tint = p.muted, size = 20.dp) }
         Spacer(Modifier.width(8.dp))
         BasicTextField(
             value = text,
@@ -643,6 +647,7 @@ private fun NewNoteRow(onAdd: (String) -> Unit) {
             }),
             modifier = Modifier
                 .weight(1f)
+                .alignBy(FirstBaseline)
                 .padding(top = 8.dp, bottom = 8.dp)
                 .onFocusChanged {
                     if (it.isFocused) had = true
